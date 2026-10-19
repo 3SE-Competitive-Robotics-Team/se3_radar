@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# IQ 样本、录波、日志
+data/*
+!data/README.md
+records/
+*.c64
+*.cfile
+*.bin
+*.log
+
+# GNU Radio Companion 生成的脚本（由 .grc 重新生成）
+grc/*.py
+!grc/epy_*.py
+
+# 规则手册 PDF 体积大，不入库
+*.pdf
