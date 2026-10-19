@@ -18,9 +18,15 @@ rmwave/
     cmds.py       0x0A01~0x0A06 数据结构
     air.py        27 B 空口包、接入码
   phy.py        频点、带宽、sensitivity、SPS
+  dsp.py        与 GNU Radio 对齐的 numpy 调制 / 接收前端（回环测试、离线回放用）
   tx/           模拟发射源字节流（→ ZMQ → GNU Radio 调制发射）
-  rx/           鉴频输出 → 定时/接入码/判决/拼包（待实现）
-  io/           IQ 文件与 ZMQ（待实现）
+  rx/
+    demod.py      鉴频输出 → 接入码同步、判决 → 空口包
+    decoder.py    空口包 → 裁判帧 → 0x0A 命令；AFC；离线 decode_iq
+  io/           IQ 文件读写（ZMQ 待实现）
+scripts/
+  replay_iq.py          离线回放 IQ 文件
+  fetch_tcr_samples.sh  下载 TCR 赛场实录 IQ（测试用）
 grc/            GNU Radio 流图与接口约定
 config/         板子 IP 与角色
 docs/           规则摘录、开源调研
@@ -34,6 +40,7 @@ data/           IQ 样本（不入库）
 
 ```bash
 pip install -e .[dev]
+bash scripts/fetch_tcr_samples.sh   # 可选，没有时赛场实录测试会跳过
 python3 -m pytest
 ```
 

@@ -8,7 +8,7 @@ on:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         # 3.10：比赛机 Ubuntu 22.04；3.12：开发用 WSL Ubuntu 24.04
@@ -20,4 +20,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install -e .[dev]
+      # TCR 赛场实录 IQ：唯一独立于我们自己发射端的参照
+      - uses: actions/cache@v4
+        with:
+          path: data/tcr
+          key: tcr-iq-a78bf35d
+      - run: bash scripts/fetch_tcr_samples.sh
       - run: python -m pytest -v

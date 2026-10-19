@@ -30,11 +30,10 @@ def test_info_cycle_length():
     assert len(source.info_cycle(source.InfoState())) == 140
 
 
-def test_jam_cycle_layout():
-    cycle = source.jam_cycle("abcdef", seq=7)
-    assert len(cycle) == source.JAM_CYCLE_LEN
-    assert cycle[:10] == b"\xcc" * 10
-    assert cycle[10:25] == KEY_FRAME_ABCDEF
+def test_jam_frame_fills_one_payload():
+    frame = source.jam_frame("abcdef", seq=7)
+    assert frame == KEY_FRAME_ABCDEF
+    assert len(frame) == air.PAYLOAD_LEN
 
 
 def test_cmd_roundtrip():

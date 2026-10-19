@@ -52,6 +52,11 @@ class FrameReassembler:
     stats: ReassemblerStats = field(default_factory=ReassemblerStats)
     _buf: bytearray = field(default_factory=bytearray)
 
+    def reset(self) -> None:
+        """丢弃未完成的半帧，用于字节流中断（丢包）之后。"""
+        self.stats.dropped_bytes += len(self._buf)
+        self._buf.clear()
+
     def feed(self, chunk: bytes) -> list[RefereeFrame]:
         self._buf += chunk
         frames = []
