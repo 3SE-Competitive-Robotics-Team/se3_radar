@@ -41,12 +41,16 @@ GNU Radio 建议用 radioconda 安装，需要 `gnuradio`、`gr-iio`、`zeromq` 
 
 ## 开发流程
 
-**所有代码改动都要走 Pull Request，不要直接推送 `main`。**
+**所有代码改动都要走 Pull Request。** `main` 的规则：
+- 禁止直接推送、强制推送和删除分支；
+- CI（`.github/workflows/pytest.yml`）的 `pytest (3.10)` 和 `pytest (3.12)` 全部通过才能合并。
+
+> 仓库是私有的，组织为免费计划，GitHub 不提供分支保护，以上规则目前靠大家自觉遵守。
 
 1. 从最新的 `main` 拉分支，命名为 `类型/简述`，例如 `feat/rx-sync`、`fix/crc16`、`docs/rules`。
 2. 在分支上提交，推送后对 `main` 开 PR。PR 描述写清楚改了什么、为什么改、怎么测的。
 3. 合并前要满足：
-   - `python3 -m pytest` 全部通过；
+   - CI 通过（本地可先跑 `python3 -m pytest`）；
    - 至少一名队员 review 通过；
    - 改了协议或物理层参数时，在 PR 里写明出处（规则手册 / 协议版本 / 实测数据）。
 4. 合并后删除分支。

@@ -1,0 +1,25 @@
+# NanoSDR 板子分工（第一阶段：两发两收）
+# 每块板需在固件 U 盘的 config.txt 里改成不同子网，主机侧网卡地址同子网 .10
+# IP 为占位值，按实际改
+
+boards:
+  tx_info:
+    uri: ip:192.168.2.1
+    role: tx
+    wave: info
+  tx_jam:
+    uri: ip:192.168.3.1
+    role: tx
+    wave: jam
+  rx_info:
+    uri: ip:192.168.4.1
+    role: rx
+    wave: info
+  rx_jam:
+    uri: ip:192.168.5.1
+    role: rx
+    wave: jam
+
+# 手动选择（第一阶段不接裁判系统）
+team: red          # 发射源所在基座 / 接收雷达所属阵营
+jam_level: 1       # 1~3
