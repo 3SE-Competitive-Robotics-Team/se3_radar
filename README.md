@@ -41,7 +41,9 @@ GNU Radio 建议用 radioconda 安装，需要 `gnuradio`、`gr-iio`、`zeromq` 
 
 ## 开发流程
 
-**所有代码改动都要走 Pull Request。** `main` 开了分支保护：禁止直接推送，CI（`.github/workflows/pytest.yml`，Python 3.10 / 3.12 跑 pytest）全部通过才能合并。
+**所有代码改动都要走 Pull Request，不要直接推送 `main`。** CI（`.github/workflows/pytest.yml`）会在 Python 3.10 / 3.12 上跑 pytest，全部通过才能合并。
+
+> 私有仓库在 GitHub 免费账户下不能开分支保护，目前这两条靠大家自觉遵守。升级 GitHub Pro 后要在 `main` 上开启：禁止直接推送、合并前要求 `pytest (3.10)` 和 `pytest (3.12)` 通过。
 
 1. 从最新的 `main` 拉分支，命名为 `类型/简述`，例如 `feat/rx-sync`、`fix/crc16`、`docs/rules`。
 2. 在分支上提交，推送后对 `main` 开 PR。PR 描述写清楚改了什么、为什么改、怎么测的。
