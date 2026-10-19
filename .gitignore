@@ -13,9 +13,6 @@ records/
 *.bin
 *.log
 
-# GNU Radio Companion 生成的脚本（由 .grc 重新生成）
-grc/*.py
-!grc/epy_*.py
 
 # 规则手册 PDF 体积大，不入库
 *.pdf

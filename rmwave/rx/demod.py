@@ -57,6 +57,15 @@ class PacketDemodulator:
         self._ac = bits.astype(bool)
         self._kernel = bits.astype(np.float32) * 2 - 1
         self._header = bytes_to_bits(air.HEADER).astype(bool)
+        # 电平 / 频偏估计只用接入码里「前后各一位都相同」的符号：这些符号不受高斯码间干扰，幅度满 ±1。
+        # 孤立位幅度会被压低，而接入码里 1 和 0 的连续段分布不对称，全用会让门限偏掉（约标称频偏的 1%）；
+        # 开头 GAUSSIAN_SPAN 位还会受上一包末尾数据影响，也不用。
+        ac = self._ac
+        steady = np.zeros(_AC_BITS, dtype=bool)
+        steady[1:-1] = (ac[:-2] == ac[1:-1]) & (ac[1:-1] == ac[2:])
+        steady[:phy.GAUSSIAN_SPAN] = False
+        self._level_one = steady & ac
+        self._level_zero = steady & ~ac
         self._win = max(1, int(round(self.sps * self.window_fraction)))
         self._win_off = (self.sps - self._win) // 2
         self._packet_len = _PACKET_SYMBOLS * self.sps
@@ -138,7 +147,7 @@ class PacketDemodulator:
             vals = -vals
             self.stats.inverted += 1
         ac_vals = vals[:_AC_BITS]
-        threshold = (ac_vals[self._ac].mean() + ac_vals[~self._ac].mean()) / 2
+        threshold = (ac_vals[self._level_one].mean() + ac_vals[self._level_zero].mean()) / 2
         bits = vals > threshold
         ac_err = int(np.count_nonzero(bits[:_AC_BITS] != self._ac))
         if ac_err > self.max_ac_errors:

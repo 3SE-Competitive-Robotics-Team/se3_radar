@@ -72,7 +72,10 @@
 - 多块 NanoSDR，按下表分工。
 - 协议层用 **Python**；射频与解调用 GNU Radio 3.10 + gr-iio，两者之间用 ZMQ。
 - 开发环境用 Windows + **WSL2**（mirrored 网络），比赛机用 **Ubuntu**。
-- **发射端（同济做法）**：Python 生成协议字节流和 27 B 空口包，经 ZMQ PUB 交给 GNU Radio。由 GNU Radio 做 GFSK 调制，再从 NanoSDR（gr-iio sink）发出。离线 IQ 文件由同一个流图换成 file sink 生成，保证文件里的波形和实际发射的一致。
+- **发射端（同济做法）**：Python 生成协议字节流和 27 B 空口包，经 ZMQ 交给 GNU Radio。由 GNU Radio 做 GFSK 调制，再从 NanoSDR（gr-iio sink）发出。离线 IQ 文件由同一个流图换成 file sink 生成，保证文件里的波形和实际发射的一致。
+  - 实现细节：ZMQ 用 REQ/REP 拉模式（流图要数据时才向 Python 要），传 ±1 float 符号而不是字节，每次最多 2 包，
+    这样流图里的积压从约 28 s 降到 0.06 s（改密钥后几乎立即上天）。
+- **流图用 Python 写，不用 `.grc`**：便于 PR review，CI 能用文件代替 SDR 跑真实的 GNU Radio 块。说明见 `rmwave/flowgraphs/README.md`。
 - **接收端分界**：GNU Radio 只做到鉴频（gr-iio source → 移频 / 信道低通 → quadrature demod），浮点鉴频输出经 ZMQ 交给 Python。定时恢复、接入码搜索、判决、拼包、CRC 都在 Python（numpy）里做，可以直接读 IQ 文件离线回放。
 - **裁判串口由解析波程序独占**（参考 SHARK 做法）。雷达主程序不开串口，把视觉/定位坐标发给解析波程序，由它统一限速后发送。
 
