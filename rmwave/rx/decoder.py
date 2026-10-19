@@ -67,19 +67,23 @@ class FrequencyTracker:
     """载波频偏跟踪（AFC）。
 
     锁定时：用每包的直流估计（dc × 标称频偏）慢慢修正前端偏移。
-    失锁时（lost_after 个样本没有解出包）：在 search 列表里轮流试偏移，每个停留 dwell 个样本。
+    失锁时（lost_after 个样本内没有可信估计）：在 search 列表里轮流试偏移，每个停留 dwell 个样本。
     NanoSDR 这类 Pluto 兼容板晶振约 ±25 ppm，433 MHz 下收发合计可达 ±20 kHz 以上，
     而接收滤波器为了挡住相邻的强干扰波必须很窄，所以需要这个环节。
+
+    估计只在残余频偏小于约一个符号率时可信：接收低通截止 = 带宽/2 = 频偏 + 符号率，
+    残余频偏再大，一个音就落进过渡带被压低，鉴频结果会偏得很远、甚至反号（包可能照样解得出）。
+    所以超过 max_estimate_hz 的估计一律不用；只有这种估计时按失锁处理，靠网格搜索把残余拉回可信范围。
     """
 
     deviation_hz: float
     gain: float = 0.5
     deadband_hz: float = 200.0
-    max_estimate_hz: float = 50e3   # 超过这个值的单次估计视为异常包，忽略
+    max_estimate_hz: float = 0.9 * phy.SYMBOL_RATE   # ≈19 kHz，超过的估计不可信
     max_step_hz: float = 5e3        # 每次最多修正这么多，防止个别坏包把前端带跑
     search_hz: tuple = (0.0, 15e3, -15e3, 30e3, -30e3, 45e3, -45e3)
-    dwell: int = 300_000
-    lost_after: int = 1_000_000
+    dwell: int = 200_000            # 每个搜索偏移停留 0.2 s（约 20 包）
+    lost_after: int = 300_000       # 0.3 s（约 30 包）没有可信估计即视为失锁
     offset_hz: float = 0.0
     locked: bool = False
     _since_packet: int = 0
@@ -92,12 +96,13 @@ class FrequencyTracker:
 
     def update(self, packets: list[AirPacket], n_samples: int) -> float:
         """返回新的前端偏移（Hz）。"""
-        if packets:
+        est = [p.dc * self.deviation_hz for p in packets]
+        est = [e for e in est if abs(e) <= self.max_estimate_hz]
+        if est:
             self.locked = True
             self._since_packet = 0
-            est = [p.dc * self.deviation_hz for p in packets]
-            est = [e for e in est if abs(e) <= self.max_estimate_hz]
-            cfo = float(np.median(est)) if est else 0.0
+            self._since_step = 0
+            cfo = float(np.median(est))
             if abs(cfo) > self.deadband_hz:
                 self.offset_hz += float(np.clip(self.gain * cfo, -self.max_step_hz, self.max_step_hz))
             self._base_hz = self.offset_hz

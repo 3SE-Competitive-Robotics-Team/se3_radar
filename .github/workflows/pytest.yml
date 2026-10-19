@@ -27,3 +27,23 @@ jobs:
           key: tcr-iq-a78bf35d
       - run: bash scripts/fetch_tcr_samples.sh
       - run: python -m pytest -v
+
+  # 系统 apt 装 GNU Radio，用系统 Python 跑全部测试（含 tests/test_gnuradio.py 的真实流图）
+  gnuradio:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            gnuradio python3-zmq python3-yaml python3-numpy python3-pytest
+      - uses: actions/cache@v4
+        with:
+          path: data/tcr
+          key: tcr-iq-a78bf35d
+      - run: bash scripts/fetch_tcr_samples.sh
+      - name: pytest（流图测试不允许被跳过）
+        run: |
+          python3 -c "from gnuradio import gr, iio, zeromq; print('GNU Radio', gr.version())"
+          PYTHONPATH=$PWD python3 -m pytest -v -rs tests/ | tee pytest.log
+          ! grep -E "SKIPPED.*test_gnuradio" pytest.log

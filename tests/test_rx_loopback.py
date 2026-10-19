@@ -13,6 +13,7 @@ from rmwave import dsp, phy
 from rmwave.io.iqfile import read_c64
 from rmwave.protocol import air, cmds
 from rmwave.rx.decoder import decode_iq
+from rmwave.rx.demod import PacketDemodulator
 from rmwave.tx import source
 
 RED_INFO = phy.wave_spec(phy.Team.RED, 0)
@@ -76,11 +77,26 @@ def test_l3_jammer_400khz_away_40db_stronger():
     assert all(f.message in expected for f in frames)
 
 
-def test_afc_acquires_30khz_offset():
-    iq, expected = info_signal(25)
-    frames, rx = decode_iq(channel(dsp.freq_shift(iq, 30e3), snr_db=15), RED_INFO)
-    assert abs(rx.frontend.offset_hz - 30e3) < 2e3
-    assert len(frames) >= 0.9 * len(expected)
+@pytest.mark.parametrize("cfo", [30e3, -30e3])
+def test_afc_acquires_large_offset(cfo):
+    """超过约一个符号率的频偏估计不可信，要靠网格搜索捕获再跟踪（实测约 0.6 s 锁定）。"""
+    iq, expected = info_signal(40)
+    frames, rx = decode_iq(channel(dsp.freq_shift(iq, cfo), snr_db=15), RED_INFO)
+    assert abs(rx.frontend.offset_hz - cfo) < 2e3
+    assert len(frames) >= 0.8 * len(expected)
+
+
+@pytest.mark.parametrize("level", [0, 1, 2, 3])
+def test_cfo_estimate_unbiased(level):
+    """没有频偏时估计应接近 0：接入码里孤立位受码间干扰、开头几位受上一包影响，都不能参与估计。"""
+    if level == 0:
+        iq, _ = info_signal(20)
+        spec = RED_INFO
+    else:
+        iq, spec = jam_signal(level, "Ab3dE9", 200)
+    packets = PacketDemodulator(spec.kind).feed(dsp.ChannelFrontend(spec).process(channel(iq, snr_db=40)))
+    assert len(packets) > 100
+    assert abs(np.median([p.dc for p in packets]) * spec.deviation_hz) < 200
 
 
 # ---- TCR 公开的赛场实录（官方发射源，独立参照），没下载时跳过 ----
