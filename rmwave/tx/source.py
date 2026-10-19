@@ -1,7 +1,9 @@
-"""官方发射源每个 100 ms 周期的字节流。
+"""官方发射源的字节流。
 
-信息波：0x0A01~0x0A05 五帧首尾相连，共 140 B。
-干扰波：10×0xCC + 0x0A06 帧(15 B) + 0xDD 填充到 135 B（取自复旦 EGA 对官方波形的复现）。
+格式依据 TCR 公开的赛场实录 IQ（用本仓库解码器解出）：
+- 信息波：0x0A01~0x0A05 五帧首尾相连，每 100 ms 一组共 140 B，帧可以跨空口包；seq 每帧加 1。
+- 干扰波：0x0A06 帧正好 15 B，每个空口包装一帧，包与包之间 seq 加 1。
+  （复旦 EGA 复现的 `CC×10 + 帧 + DD 填充` 格式与实录不符。）
 """
 
 import random
@@ -11,9 +13,6 @@ from dataclasses import dataclass, field
 from ..protocol import cmds
 from ..protocol.referee import encode_frame
 
-JAM_PREFIX = bytes([0xCC]) * 10
-JAM_FILL = 0xDD
-JAM_CYCLE_LEN = 135
 KEY_ALPHABET = string.ascii_letters + string.digits
 
 
@@ -42,10 +41,9 @@ def info_cycle(state: InfoState, seq: int = 0) -> bytes:
     )
 
 
-def jam_cycle(key: str, seq: int = 0) -> bytes:
-    frame = encode_frame(cmds.Cmd.JAM_KEY, cmds.JamKey(key).pack(), seq)
-    body = JAM_PREFIX + frame
-    return body + bytes([JAM_FILL]) * (JAM_CYCLE_LEN - len(body))
+def jam_frame(key: str, seq: int = 0) -> bytes:
+    """一个干扰波空口包的 payload：一整帧 0x0A06，正好 15 B。"""
+    return encode_frame(cmds.Cmd.JAM_KEY, cmds.JamKey(key).pack(), seq & 0xFF)
 
 
 def random_info_state(rng: random.Random | None = None) -> InfoState:
