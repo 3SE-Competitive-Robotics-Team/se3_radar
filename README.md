@@ -68,11 +68,10 @@ python3 scripts/run_board.py rx_jam --show         # 收干扰波，打印每一
 
 ## 开发流程
 
-**所有代码改动都要走 Pull Request。** `main` 的规则：
+**所有代码改动都要走 Pull Request。** `main` 由规则集 `protect-main` 保护（Settings → Rules → Rulesets），管理员同样受限：
 - 禁止直接推送、强制推送和删除分支；
 - CI（`.github/workflows/pytest.yml`）全部通过才能合并：`pytest (3.10)`、`pytest (3.12)`（不含 GNU Radio）和 `gnuradio`（装 GNU Radio 跑全部测试，含流图）。
-
-> 仓库是私有的，组织为免费计划，GitHub 不提供分支保护，以上规则目前靠大家自觉遵守。
+- 目前不要求审批人数（单人开发时会卡住自己的 PR）；队员多了把 Required approvals 改成 1。
 
 1. 从最新的 `main` 拉分支，命名为 `类型/简述`，例如 `feat/rx-sync`、`fix/crc16`、`docs/rules`。
 2. 在分支上提交，推送后对 `main` 开 PR。PR 描述写清楚改了什么、为什么改、怎么测的。
