@@ -42,16 +42,21 @@ def test_parse_pluto_like_board():
     assert info.tx_channels == 1
 
 
-def test_rx_board_without_rx_dma_fails(capsys):
-    """实测：一块 v0.39-dirty 固件的板只有 ad9361-phy / xadc / dds-core 三个设备，没有接收 DMA。"""
-    tx_only = PLUTO_1R1T.split("\tiio:device4: cf-ad9361-lpc")[0].replace("v0.38", "v0.39-dirty")
+def test_rx_board_without_rx_device_fails(capsys):
+    """实测：板 1 接收校准失败，只有 ad9361-phy / xadc / dds-core，没有接收设备。"""
+    tx_only = PLUTO_1R1T.split("\tiio:device4: cf-ad9361-lpc")[0]
     info = check_boards.BoardInfo("rx_info", "ip:192.168.4.1", "rx")
     check_boards.parse_iio_info(tx_only, info)
-    info.iio = True
     assert info.rx_channels == 0 and info.tx_channels == 1
     assert not check_boards.report([info])
-    out = capsys.readouterr().out
-    assert "没有接收 DMA" in out and "-dirty" in out
+    assert "只能当发射板" in capsys.readouterr().out
+
+
+def test_same_board_as_tx_passes(capsys):
+    tx_only = PLUTO_1R1T.split("\tiio:device4: cf-ad9361-lpc")[0]
+    info = check_boards.BoardInfo("tx_jam", "ip:192.168.3.1", "tx")
+    check_boards.parse_iio_info(tx_only, info)
+    assert check_boards.report([info])
 
 
 def test_parse_2r2t_board():
