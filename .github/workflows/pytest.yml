@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+# 同一个 PR 推了新提交时取消还在排队 / 运行的旧 CI；main 上每次合并都完整跑，不取消
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   pytest:
     runs-on: ubuntu-24.04
