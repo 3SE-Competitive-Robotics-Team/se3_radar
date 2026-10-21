@@ -40,10 +40,16 @@ def main() -> int:
     ap.add_argument("--show", action="store_true", help="接收端打印每一帧")
     ap.add_argument("--sim", help="不接硬件：发射写到这个 IQ 文件 / 接收读这个 IQ 文件")
     ap.add_argument("--seconds", type=float, default=3.0, help="--sim 发射时长")
+    ap.add_argument("--attenuation", type=float, help="发射衰减 dB，覆盖配置")
+    ap.add_argument("--gain-mode", choices=["manual", "slow_attack", "fast_attack", "hybrid"], help="接收增益模式，覆盖配置")
+    ap.add_argument("--gain", type=float, help="manual 模式下的接收增益 dB，覆盖配置")
     args = ap.parse_args()
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    board = cfg["boards"][args.board]
+    board = dict(cfg["boards"][args.board])
+    for key, val in (("attenuation", args.attenuation), ("gain_mode", args.gain_mode), ("gain", args.gain)):
+        if val is not None:
+            board[key] = val
     team = args.team or cfg["team"]
     level = 0 if board["wave"] == "info" else (args.level or cfg["jam_level"])
     spec = phy.wave_spec(phy.Team(team), level)
@@ -107,7 +113,7 @@ def run_rx(board, spec, team, level, args, pub, addrs) -> int:
     rx = StreamReceiver(spec, board["zmq"], f"http://127.0.0.1:{board['ctrl']}", offset)
     cmd = [sys.executable, "-m", "rmwave.flowgraphs.rx", "--team", team, "--level", str(level),
            "--zmq", board["zmq"], "--ctrl-port", str(board["ctrl"]), "--offset", str(offset),
-           "--gain-mode", board.get("gain_mode", "slow_attack"),
+           "--gain-mode", board.get("gain_mode", "slow_attack"), "--gain", str(board.get("gain", 50)),
            "--spectrum", addrs.spectrum, "--level-pub", addrs.level]
     cmd += ["--file", args.sim] if args.sim else ["--uri", board["uri"]]
     print(f"[{args.board}] 接收 {spec.kind.value} L{level} @ {spec.center_hz / 1e6:.2f} MHz", flush=True)

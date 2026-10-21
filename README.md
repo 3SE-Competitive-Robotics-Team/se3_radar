@@ -30,10 +30,11 @@ rmwave/
   flowgraphs/   GNU Radio 收发流图（Python 编写），说明见其 README
   io/           IQ 文件读写
   telemetry.py  板子进程发给调试网页的状态 / 帧 / 频谱（ZMQ PUB）
-  webui/        调试网页（只读）：汇总遥测，HTTP + SSE 推给浏览器
+  webui/        调试台：汇总遥测、漏斗诊断，进程管理与控制，HTTP + SSE 推给浏览器
 scripts/
+  radar.py              一键启动：调试台 + 全部板子（网页上改阵营 / 等级 / 密钥 / 衰减 / 增益）
   run_board.py          按 config 启动一块板（流图 + Python 侧）
-  webui.py              调试网页
+  webui.py              调试台（只读）
   replay_iq.py          离线回放 IQ 文件
   fetch_tcr_samples.sh  下载 TCR 赛场实录 IQ（测试用）
 config/         板子 IP、角色、端口
@@ -57,25 +58,23 @@ python3 -m pytest
 
 ## 实验室运行（第一阶段）
 
-先在 `config/boards.yaml` 里填好每块板的 IP，再各开一个终端：
+先在 `config/boards.yaml` 里填好每块板的 IP，然后**一键启动**：
 
 ```bash
-python3 scripts/run_board.py tx_info               # 模拟信息波发射源
-python3 scripts/run_board.py tx_jam --key Ab3dE9   # 模拟干扰波发射源（等级取配置里的 jam_level）
-python3 scripts/run_board.py rx_info               # 收信息波，每秒打印统计
-python3 scripts/run_board.py rx_jam --show         # 收干扰波，打印每一帧和解出的密钥
+python3 scripts/radar.py
 ```
 
-`--team`、`--level` 可临时覆盖配置。没有硬件时加 `--sim 文件`：发射写 IQ 文件、接收读 IQ 文件，用来检查整套流程。
-发射衰减默认 70 dB，实验室近距离先从大衰减开始。比赛机上不能发射（制作规范 S23）。
+Windows 上直接双击仓库根目录的 `start_radar.bat`（经 WSL 运行同一个脚本）。它会按配置拉起全部板子，并打开调试台
+http://127.0.0.1:8800；关窗口 / Ctrl-C 即全部停止。
 
-### 调试网页
+调试台上能直接改，不用再敲命令：
 
-```bash
-python3 scripts/webui.py      # 浏览器打开 http://127.0.0.1:8800
-```
+- **阵营、干扰等级**：切换后自动重启受影响的板（换等级只重启干扰波的两块）
+- **每块板**：启动 / 停止 / 重启，看进程输出；进程意外退出会按 1 / 2 / 5 / 10 / 30 s 退避自动拉起
+- **发射板**：发射衰减（实时生效）、干扰波密钥（指定或随机，换密钥会重启这块板）
+- **接收板**：增益模式（自动 slow_attack / fast_attack / hybrid 或手动）和手动增益（实时生效）
 
-只看不控制。网页和各块板谁先开都行，网页没开也不影响收发。重点是回答「卡在哪一步」：
+调试台的重点是回答「卡在哪一步」：
 
 - **接收板漏斗**：进程 → 采样流（实际速率、断档）→ 电平（峰值，削顶报警）→ 带内信号（SNR）→ 接入码 → 空口包
   → 裁判帧（CRC）→ 结果（信息波 5 条命令 / 干扰波密钥和出密钥用时）。第一处出问题的一级标红，并直接给出排查建议
@@ -83,16 +82,22 @@ python3 scripts/webui.py      # 浏览器打开 http://127.0.0.1:8800
 - **信号质量**：频谱 + 瀑布图（标出红蓝双方各波和 AFC 偏移）、输入电平、按包对齐的眼图、AFC 频偏 120 s 曲线、
   接入码误码分布 / 相关值 / 残余频偏
 - **发射板**：发包速率（对比满载 98.5 包/s）、gr-iio 欠载次数、流图报错
-- **事件**：板子上下线（ping）、进程启停、AFC 锁定 / 失锁、断档、削顶、欠载、报错、解出密钥
+- **事件**：板子上下线（ping）、进程启停与自动重启、AFC 锁定 / 失锁、断档、削顶、欠载、报错、解出密钥、参数改动
 
-遥测端口默认由每块板的 `ctrl` 端口推出（状态 `ctrl+1000`，频谱 `ctrl+2000`，电平 `ctrl+3000`），也可在
-`boards.yaml` 里用 `status` / `spectrum` / `level` 写死。不接硬件时配合 `--sim` 使用：
+其他启动方式：
 
 ```bash
-python3 scripts/run_board.py tx_jam --sim /tmp/jam.c64 --seconds 30
-python3 scripts/webui.py &
-python3 scripts/run_board.py rx_jam --sim /tmp/jam.c64
+python3 scripts/radar.py --no-autostart     # 只开调试台，板子在网页上手动启动
+python3 scripts/radar.py --sim data/sim     # 没有板子：接收板循环回放 data/sim/<板名>.c64，不启动发射板
+python3 scripts/webui.py                    # 只看不控制（板子在别的终端里手动启动时用）
+python3 scripts/run_board.py rx_jam --show  # 单独手动跑一块板，参数见 --help
 ```
+
+调试台默认只监听本机；`--host 0.0.0.0` 能让同一网络的其他电脑访问，但对方也就能控制板子。
+发射衰减默认 70 dB，实验室近距离先从大衰减开始。比赛机上不能发射（制作规范 S23）。
+
+遥测端口默认由每块板的 `ctrl` 端口推出（状态 `ctrl+1000`，频谱 `ctrl+2000`，电平 `ctrl+3000`），也可在
+`boards.yaml` 里用 `status` / `spectrum` / `level` 写死。
 
 ## 开发流程
 

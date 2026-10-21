@@ -1,9 +1,10 @@
-"""HTTP 服务（只用标准库）：静态页面 + JSON 接口 + SSE 实时推送。只读，不控制板子。
+"""HTTP 服务（只用标准库）：静态页面 + JSON 接口 + SSE 实时推送；带进程管理时还能控制各块板。
 
-  GET /                   调试页面
-  GET /api/state          全量状态快照
-  GET /api/spectrum?board=rx_info   某块板最新一帧频谱
-  GET /api/events         SSE：state 每 0.5 s 一次，spectrum 每块板最多 10 帧/秒
+  GET  /                  调试页面
+  GET  /api/state         全量状态快照（带进程管理时含 control）
+  GET  /api/spectrum?board=rx_info   某块板最新一帧频谱
+  GET  /api/events        SSE：state 每 0.5 s 一次，spectrum 每块板最多 10 帧/秒
+  POST /api/control       控制（只收 Content-Type: application/json，挡住别的网页跨站提交），见 Supervisor.control
 """
 
 import json
@@ -17,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 
 from .aggregator import Aggregator
+from .supervisor import Supervisor
 
 STATIC = Path(__file__).resolve().parent / "static"
 STATE_INTERVAL = 0.5
@@ -43,7 +45,15 @@ def spectrum_payload(name: str, db: np.ndarray) -> dict:
     return {"board": name, "db": np.round(db, 1).tolist()}
 
 
-def make_handler(agg: Aggregator, stop: threading.Event):
+def make_handler(agg: Aggregator, stop: threading.Event, sup: Supervisor | None = None):
+    def snapshot() -> dict:
+        snap = agg.snapshot()
+        if sup is not None:
+            ctl = sup.state()
+            snap["control"] = ctl
+            snap["team"], snap["jam_level"] = ctl["settings"]["team"], ctl["settings"]["jam_level"]
+        return snap
+
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -63,7 +73,7 @@ def make_handler(agg: Aggregator, stop: threading.Event):
             if url.path in ("/", "/index.html"):
                 self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif url.path == "/api/state":
-                self._send(200, dumps(agg.snapshot()).encode(), "application/json; charset=utf-8")
+                self._send(200, dumps(snapshot()).encode(), "application/json; charset=utf-8")
             elif url.path == "/api/spectrum":
                 name = parse_qs(url.query).get("board", [""])[0]
                 db, _ = agg.spectrum(name)
@@ -75,6 +85,25 @@ def make_handler(agg: Aggregator, stop: threading.Event):
                 self._events()
             else:
                 self._send(404, b"not found", "text/plain")
+
+        def do_POST(self):
+            if urlparse(self.path).path != "/api/control":
+                self._send(404, b"not found", "text/plain")
+                return
+            if sup is None:
+                self._send(403, dumps({"ok": False, "error": "只读模式：用 scripts/radar.py 启动才能控制"}).encode(),
+                           "application/json; charset=utf-8")
+                return
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                self._send(415, dumps({"ok": False, "error": "只收 application/json"}).encode(), "application/json")
+                return
+            try:
+                length = min(int(self.headers.get("Content-Length", 0)), 4096)
+                req = json.loads(self.rfile.read(length) or b"{}")
+                msg = sup.control(req)
+                self._send(200, dumps({"ok": True, "message": msg}).encode(), "application/json; charset=utf-8")
+            except (ValueError, TypeError) as e:
+                self._send(400, dumps({"ok": False, "error": str(e)}).encode(), "application/json; charset=utf-8")
 
         def _event(self, name: str, data) -> None:
             self.wfile.write(f"event: {name}\ndata: {dumps(data)}\n\n".encode())
@@ -93,7 +122,7 @@ def make_handler(agg: Aggregator, stop: threading.Event):
                 while not stop.is_set():
                     now = time.monotonic()
                     if now - last_state >= STATE_INTERVAL:
-                        self._event("state", agg.snapshot())
+                        self._event("state", snapshot())
                         last_state = now
                     for name, ver in agg.spectrum_versions().items():
                         if sent.get(name) != ver:
@@ -109,10 +138,14 @@ def make_handler(agg: Aggregator, stop: threading.Event):
 
 
 class WebUI:
-    def __init__(self, cfg: dict, host: str = "127.0.0.1", port: int = 8800, **agg_kwargs):
+    def __init__(self, cfg: dict, host: str = "127.0.0.1", port: int = 8800, supervisor: Supervisor | None = None,
+                 **agg_kwargs):
         self.agg = Aggregator(cfg, **agg_kwargs)
+        self.sup = supervisor
+        if supervisor is not None:
+            supervisor.on_event = self.agg.add_event
         self.stop = threading.Event()
-        self.httpd = ThreadingHTTPServer((host, port), make_handler(self.agg, self.stop))
+        self.httpd = ThreadingHTTPServer((host, port), make_handler(self.agg, self.stop, supervisor))
         self.httpd.daemon_threads = True
         self._thread: threading.Thread | None = None
 
@@ -120,13 +153,17 @@ class WebUI:
     def port(self) -> int:
         return self.httpd.server_address[1]
 
-    def start(self) -> None:
+    def start(self, autostart: bool = False) -> None:
         self.agg.start()
         self._thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self._thread.start()
+        if self.sup is not None:
+            self.sup.start(autostart)
 
     def close(self) -> None:
         self.stop.set()
+        if self.sup is not None:
+            self.sup.close()
         self.httpd.shutdown()
         self.httpd.server_close()
         if self._thread is not None:

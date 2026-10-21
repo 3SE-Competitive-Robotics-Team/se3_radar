@@ -124,16 +124,52 @@ td.c { white-space: nowrap; font-family: var(--mono); }
 .ev:last-child { border-bottom: 0; }
 .ev .t { font: 11px var(--mono); color: var(--faint); } .ev .b { font: 11.5px var(--mono); color: var(--muted); }
 .empty { color: var(--muted); font-size: 12px; padding: 8px 12px; }
+
+/* 控制 */
+button, select, input { font: inherit; font-size: 12px; color: var(--text); }
+.btn { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); } .btn:active { transform: translateY(1px); }
+.btn.go { border-color: rgba(52,211,153,.5); color: var(--ok); } .btn.halt { border-color: rgba(248,113,113,.5); color: var(--bad); }
+.btn.sm { padding: 1px 8px; font-size: 11.5px; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
+.seg button { background: transparent; border: 0; border-right: 1px solid var(--line-2); padding: 3px 10px; cursor: pointer; color: var(--muted); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--panel-2); color: var(--text); }
+.seg button.on.red { color: #fca5a5; background: rgba(248,113,113,.15); } .seg button.on.blue { color: #93c5fd; background: rgba(96,165,250,.15); }
+.ctlbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ctlbar .lab { color: var(--muted); font-size: 12px; }
+input.field, select.field { background: #0b0f15; border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 7px; }
+input.field:focus, select.field:focus { outline: none; border-color: var(--accent); }
+input.num6 { width: 7.5em; font-family: var(--mono); letter-spacing: .06em; } input.numdb { width: 5.5em; font-family: var(--mono); }
+.ctlrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.ctlrow .lab { color: var(--muted); }
+.tile .ctl { display: flex; gap: 4px; margin-top: 3px; }
+pre.log { margin: 6px 0 0; max-height: 220px; overflow: auto; background: #070a0e; border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; font: 11.5px/1.5 var(--mono); color: #aab4c0; white-space: pre-wrap; word-break: break-all; }
+.toast { position: sticky; top: 52px; z-index: 9; margin: 8px 16px 0; padding: 6px 12px; border-radius: 8px; font-size: 13px; display: none; }
+.toast.ok { display: block; background: var(--ok-bg); border: 1px solid rgba(52,211,153,.35); }
+.toast.bad { display: block; background: var(--bad-bg); border: 1px solid rgba(248,113,113,.4); }
+.mode-tag { font-size: 11.5px; color: var(--warn); }
 </style>
 </head>
 <body>
 <div class="top">
   <div class="brand"><i></i>信息波调试台</div>
   <span class="pill" id="cfg">—</span>
+  <div class="ctlbar" id="ctl-global" style="display:none">
+    <span class="lab">阵营</span>
+    <span class="seg" id="seg-team"><button data-team="red" class="red">红方</button><button data-team="blue" class="blue">蓝方</button></span>
+    <span class="lab">干扰等级</span>
+    <span class="seg" id="seg-level"><button data-level="1">1</button><button data-level="2">2</button><button data-level="3">3</button></span>
+    <button class="btn go" id="btn-start-all">全部启动</button>
+    <button class="btn halt" id="btn-stop-all">全部停止</button>
+    <span class="mode-tag" id="mode-tag"></span>
+  </div>
   <span class="grow"></span>
   <span class="pill" id="conn"><span class="dot"></span>连接中</span>
   <span class="pill num" id="clock">—</span>
 </div>
+<div class="toast" id="toast"></div>
 <div class="strip" id="strip"></div>
 <div class="layout">
   <div class="rx-list" id="rx-list"></div>
@@ -173,23 +209,73 @@ function boardState(b) {
   return b.role === "rx" ? (b.verdict?.state ?? "idle") : (b.health?.state ?? "idle");
 }
 
+// ---------- 控制 ----------
+let toastTimer = null;
+function toast(ok, text) {
+  const t = $("#toast"); t.className = "toast " + (ok ? "ok" : "bad"); t.textContent = text;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = "toast"; }, ok ? 3500 : 8000);
+}
+async function ctl(body) {
+  try {
+    const r = await fetch("/api/control", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    toast(j.ok, j.ok ? j.message : j.error);
+    return j.ok;
+  } catch (e) { toast(false, "请求失败：" + e); return false; }
+}
+const ctlState = name => state && state.control && state.control.boards[name];
+function setVal(input, v) { if (document.activeElement !== input && input._v !== v) { input.value = v ?? ""; input._v = v; } }
+function initGlobal() {
+  $("#seg-team").addEventListener("click", e => { const t = e.target.dataset.team; if (t && t !== state.control.settings.team) ctl({action: "set_global", team: t}); });
+  $("#seg-level").addEventListener("click", e => { const l = e.target.dataset.level; if (l && +l !== state.control.settings.jam_level) ctl({action: "set_global", jam_level: +l}); });
+  $("#btn-start-all").onclick = () => ctl({action: "start_all"});
+  $("#btn-stop-all").onclick = () => { if (confirm("停止全部板子？")) ctl({action: "stop_all"}); };
+}
+function renderGlobal() {
+  const c = state.control, box = $("#ctl-global");
+  box.style.display = c ? "" : "none";
+  $("#cfg").style.display = c ? "none" : "";
+  if (!c) return;
+  for (const b of $("#seg-team").children) b.classList.toggle("on", b.dataset.team === c.settings.team);
+  for (const b of $("#seg-level").children) b.classList.toggle("on", +b.dataset.level === c.settings.jam_level);
+  setHTML($("#mode-tag"), c.sim_dir ? `仿真回放 ${esc(c.sim_dir)}` : "");
+}
+
 // ---------- 板子条 ----------
+const tiles = {};
+function makeTile(name) {
+  const t = el("div", "tile"), info = el("div"), ctlBox = el("div", "ctl");
+  ctlBox.innerHTML = `<button class="btn sm go" data-a="start">启动</button><button class="btn sm" data-a="restart">重启</button><button class="btn sm halt" data-a="stop">停止</button>`;
+  ctlBox.addEventListener("click", e => { const a = e.target.dataset.a; if (a) ctl({action: a, board: name}); });
+  t.append(info, ctlBox); $("#strip").append(t);
+  return tiles[name] = {t, info, ctlBox};
+}
 function renderStrip() {
-  const strip = $("#strip");
-  const html = state.boards.map(b => {
-    const s = b.status || {}, st = boardState(b), w = s.wave;
-    const ping = b.reachable == null ? "idle" : b.reachable ? "ok" : "bad";
-    const proc = b.running ? "ok" : b.status_age == null ? "idle" : "bad";
-    let main;
-    if (b.role === "rx") main = b.running ? `<span class="${b.verdict.state}">${esc(b.verdict.state === "ok" ? "全链路正常" : b.verdict.stage + "：" + (b.funnel.find(x => x.label === b.verdict.stage)?.value ?? ""))}</span>` : `<span class="muted">未运行</span>`;
-    else main = b.running ? `<span class="${b.health.state}">${f(b.win.packets_rate, 1)} 包/s</span>${s.key ? ` · <span class="mono">${esc(s.key)}</span>` : ""}` : `<span class="muted">未运行</span>`;
-    return `<div class="tile ${st}">
-      <div class="tile-head"><b>${esc(b.name)}</b><span class="tag">${b.role === "tx" ? "发" : "收"}</span><span class="grow"></span>
-        <span class="lights"><span>${dot(ping)}板</span><span>${dot(proc)}进程</span></span></div>
-      <div class="sub">${esc(w ? waveName(w) + " · " + mhz(w.center_hz) : (b.wave_cfg === "info" ? "信息波" : "干扰波"))} · ${esc(b.uri || "")}</div>
-      <div class="main">${main}</div></div>`;
-  }).join("");
-  setHTML(strip, html);
+  for (const b of state.boards) {
+    const tl = tiles[b.name] || makeTile(b.name), cs = ctlState(b.name);
+    tl.t.className = "tile " + boardState(b);
+    tl.ctlBox.style.display = cs ? "" : "none";
+    if (cs) {
+      tl.ctlBox.querySelector('[data-a="start"]').style.display = cs.want_running ? "none" : "";
+      tl.ctlBox.querySelector('[data-a="restart"]').style.display = cs.want_running ? "" : "none";
+      tl.ctlBox.querySelector('[data-a="stop"]').style.display = cs.want_running ? "" : "none";
+    }
+    setHTML(tl.info, tileInfo(b, cs));
+  }
+}
+function tileInfo(b, cs) {
+  const s = b.status || {}, w = s.wave;
+  const ping = b.reachable == null ? "idle" : b.reachable ? "ok" : "bad";
+  const proc = b.running ? "ok" : b.status_age == null && !(cs && cs.want_running) ? "idle" : "bad";
+  let main;
+  if (!b.running) main = cs && cs.want_running ? `<span class="warn">启动中…</span>` : `<span class="muted">未运行</span>`;
+  else if (b.role === "rx") main = `<span class="${b.verdict.state}">${esc(b.verdict.state === "ok" ? "全链路正常" : b.verdict.stage + "：" + (b.funnel.find(x => x.label === b.verdict.stage)?.value ?? ""))}</span>`;
+  else main = `<span class="${b.health.state}">${f(b.win.packets_rate, 1)} 包/s</span>${s.key ? ` · <span class="mono">${esc(s.key)}</span>` : ""}`;
+  const extra = cs && cs.restarts && !state.control.sim_dir ? ` · <span class="warn">自动重启 ${cs.restarts} 次</span>` : "";
+  return `<div class="tile-head"><b>${esc(b.name)}</b><span class="tag">${b.role === "tx" ? "发" : "收"}</span><span class="grow"></span>
+      <span class="lights"><span>${dot(ping)}板</span><span>${dot(proc)}进程</span></span></div>
+    <div class="sub">${esc(w ? waveName(w) + " · " + mhz(w.center_hz) : (b.wave_cfg === "info" ? "信息波" : "干扰波"))} · ${esc(b.uri || "")}</div>
+    <div class="main">${main}${extra}</div>`;
 }
 
 // ---------- 接收板面板 ----------
@@ -216,7 +302,14 @@ function makeRx(name) {
         </div>
       </div>
       <div class="result"></div>
+      <div class="ctlrow rxctl" style="display:none">
+        <span class="lab">接收增益</span>
+        <select class="field gmode"><option value="slow_attack">自动 slow_attack</option><option value="fast_attack">自动 fast_attack</option><option value="hybrid">自动 hybrid</option><option value="manual">手动</option></select>
+        <input class="field numdb gain" type="number" min="-3" max="73" step="1" title="手动增益 dB"><span class="lab gunit">dB</span>
+        <button class="btn sm gapply">应用</button><span class="faint">实时生效，不重启</span>
+      </div>
       <details><summary>最近帧</summary><div class="recent"></div></details>
+      <details class="logbox" style="display:none"><summary>进程输出</summary><pre class="log"></pre></details>
     </div>`;
   $("#rx-list").append(sec);
   Object.assign(p, {
@@ -225,7 +318,17 @@ function makeRx(name) {
     lvl: $(".lvl", sec), lvlc: $(".lvl-c", sec), lvlGain: $(".lvl-gain", sec), eye: $(".eye", sec), eyeTag: $(".eye-tag", sec),
     afc: $(".afc", sec), afcNow: $(".afc-now", sec), quality: $(".quality", sec), qn: $(".q-n", sec),
     result: $(".result", sec), recent: $(".recent", sec),
+    rxctl: $(".rxctl", sec), gmode: $(".gmode", sec), gain: $(".gain", sec), logbox: $(".logbox", sec), log: $(".log", sec),
   });
+  const syncGain = () => { const manual = p.gmode.value === "manual"; p.gain.style.display = manual ? "" : "none"; $(".gunit", sec).style.display = manual ? "" : "none"; };
+  p.gmode.addEventListener("change", () => { p.gmode._dirty = true; syncGain(); });
+  p.gain.addEventListener("input", () => { p.gain._dirty = true; });
+  $(".gapply", sec).onclick = async () => {
+    const body = {action: "set_board", board: name, gain_mode: p.gmode.value};
+    if (p.gmode.value === "manual") body.gain = +p.gain.value;
+    if (await ctl(body)) { p.gmode._dirty = p.gain._dirty = false; }
+  };
+  p.syncGain = syncGain;
   p.spec.addEventListener("mousemove", e => { const r = p.spec.getBoundingClientRect(); p.hoverX = (e.clientX - r.left) / r.width; drawSpec(p); });
   p.spec.addEventListener("mouseleave", () => { p.hoverX = null; p.ro.textContent = ""; drawSpec(p); });
   rx[name] = p;
@@ -235,6 +338,15 @@ function makeRx(name) {
 function renderRx(b) {
   const p = rx[b.name] || makeRx(b.name);
   p.b = b;
+  const cs = ctlState(b.name);
+  p.rxctl.style.display = cs ? "" : "none";
+  p.logbox.style.display = cs ? "" : "none";
+  if (cs) {
+    if (!p.gmode._dirty && document.activeElement !== p.gmode) p.gmode.value = cs.settings.gain_mode;
+    if (!p.gain._dirty) setVal(p.gain, cs.settings.gain);
+    p.syncGain();
+    showLog(p.logbox, p.log, cs.log);
+  }
   const s = b.status || {}, w = s.wave;
   setHTML(p.sub, w ? `${esc(waveName(w))} · ${mhz(w.center_hz)} · 带宽 ${(w.bandwidth_hz / 1e3).toFixed(0)} kHz · ${esc(b.uri || "")}` : esc(b.uri || ""));
   const v = b.verdict || {state: "idle", text: "等待数据…"};
@@ -307,6 +419,12 @@ function renderRx(b) {
   p.snr.className = "snr " + (snr == null ? "idle" : snr >= 10 ? "ok" : snr >= 3 ? "warn" : "bad");
   setHTML(p.snr, snr == null ? "" : `带内 SNR ${f(snr, 0)} dB`);
   drawSpec(p);
+}
+function showLog(box, pre, lines) {
+  if (!box.open) return;
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+  const text = (lines || []).join("\n") || "（还没有输出）";
+  if (pre._t !== text) { pre.textContent = text; pre._t = text; if (atBottom) pre.scrollTop = pre.scrollHeight; }
 }
 function msgText(m) {
   if (m == null) return "（未知命令或长度不符）";
@@ -428,24 +546,51 @@ function drawAfc(p, series) {
 }
 
 // ---------- 侧栏 ----------
+const txs = {};
+function makeTx(b) {
+  const box = el("div", "tx"), info = el("div"), ctlBox = el("div", "ctlrow");
+  box.style.display = "grid"; box.style.gap = "6px";
+  ctlBox.innerHTML = `<span class="lab">衰减</span><input class="field numdb att" type="number" min="0" max="89.75" step="1"><span class="lab">dB</span>
+    <button class="btn sm att-apply">应用</button>` + (b.wave_cfg === "jam" ? `
+    <span class="lab" style="margin-left:6px">密钥</span><input class="field num6 keyin" maxlength="6" placeholder="6 位">
+    <button class="btn sm key-apply">应用</button><button class="btn sm key-rand">随机</button>` : "");
+  const logbox = el("details", "logbox"); logbox.innerHTML = `<summary>进程输出</summary><pre class="log"></pre>`;
+  box.append(info, ctlBox, logbox); $("#tx-list").append(box);
+  const t = {box, info, ctlBox, logbox, log: $(".log", logbox), att: $(".att", ctlBox), key: $(".keyin", ctlBox)};
+  t.att.addEventListener("input", () => { t.att._dirty = true; });
+  $(".att-apply", ctlBox).onclick = async () => { if (await ctl({action: "set_board", board: b.name, attenuation: +t.att.value})) t.att._dirty = false; };
+  if (t.key) {
+    t.key.addEventListener("input", () => { t.key._dirty = true; });
+    $(".key-apply", ctlBox).onclick = async () => { if (await ctl({action: "set_board", board: b.name, key: t.key.value.trim()})) t.key._dirty = false; };
+    $(".key-rand", ctlBox).onclick = async () => { if (await ctl({action: "set_board", board: b.name, key: null})) t.key._dirty = false; };
+  }
+  return txs[b.name] = t;
+}
 function renderTx() {
-  const txs = state.boards.filter(b => b.role === "tx");
-  setHTML($("#tx-list"), txs.length ? txs.map(b => {
+  const list = state.boards.filter(b => b.role === "tx");
+  if (!list.length) { setHTML($("#tx-list"), `<div class="empty">配置里没有发射板</div>`); return; }
+  for (const b of list) {
+    const t = txs[b.name] || makeTx(b), cs = ctlState(b.name);
     const s = b.status || {}, w = s.wave, h = b.health || {state: "idle", text: ""}, wc = b.win || {}, fg = s.flowgraph || {};
     const rate = wc.packets_rate, full = state.packets_per_s;
-    return `<div class="tx">
+    setHTML(t.info, `
       <div class="tx-head">${dot(boardState(b))}<b>${esc(b.name)}</b><span class="muted">${esc(w ? waveName(w) + " · " + mhz(w.center_hz) : "")}</span></div>
-      <div class="health ${h.state}">${esc(h.text)}</div>
+      <div class="health ${h.state}">${esc(!b.running && cs && cs.want_running ? "启动中…" : h.text)}</div>
       ${b.running || b.status_age != null ? `
       <div class="meter" title="发包速率 / 满载"><i style="width:${Math.min(100, (rate || 0) / full * 100)}%"></i></div>
       <dl class="kv"><dt>发包速率</dt><dd>${f(rate, 1)} / ${f(full, 1)} 包/s</dd>
         <dt>已发</dt><dd>${s.sent_packets ?? "—"}</dd>
         <dt>欠载（累计 / 近 ${f(wc.window, 0)}s）</dt><dd class="${wc.underflows ? "warn" : ""}">${fg.underflows ?? "—"} / ${wc.underflows ?? "—"}</dd>
         <dt>流图报错</dt><dd class="${fg.errors ? "bad" : ""}">${fg.errors ?? "—"}</dd>
-        <dt>发射衰减</dt><dd>${f(s.attenuation_db, 0)} dB</dd>
-        ${s.key ? `<dt>密钥</dt><dd class="ok">${esc(s.key)}</dd>` : ""}</dl>` : ""}
-    </div>`;
-  }).join("") : `<div class="empty">配置里没有发射板</div>`);
+        ${s.key ? `<dt>正在发的密钥</dt><dd class="ok">${esc(s.key)}</dd>` : ""}</dl>` : ""}`);
+    t.ctlBox.style.display = cs ? "" : "none";
+    t.logbox.style.display = cs ? "" : "none";
+    if (cs) {
+      if (!t.att._dirty) setVal(t.att, cs.settings.attenuation);
+      if (t.key && !t.key._dirty) setVal(t.key, cs.settings.key || s.key || "");
+      showLog(t.logbox, t.log, cs.log);
+    }
+  }
 }
 function renderEvents() {
   const ev = state.events || [];
@@ -459,6 +604,7 @@ function render() {
   if (!state) return;
   const team = state.team === "red" ? "红方" : state.team === "blue" ? "蓝方" : "—";
   $("#cfg").textContent = `配置 ${team} · 干扰等级 ${state.jam_level ?? "—"}`;
+  renderGlobal();
   renderStrip();
   for (const b of state.boards) if (b.role === "rx") renderRx(b);
   renderTx();
@@ -484,6 +630,7 @@ setInterval(() => {
   if (lastMsg && Date.now() - lastMsg > 3000) setConn("bad", "服务无响应");
 }, 1000);
 window.addEventListener("resize", () => { for (const p of Object.values(rx)) { drawSpec(p); if (p.b) renderRx(p.b); } });
+initGlobal();
 connect();
 </script>
 </body>

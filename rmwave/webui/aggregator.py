@@ -367,6 +367,11 @@ class Aggregator:
         self.poller.register(s, zmq.POLLIN)
 
     # ---- 事件 ----
+    def add_event(self, board: str, level: str, text: str) -> None:
+        """外部（进程管理）记事件，线程安全。"""
+        with self.lock:
+            self._event(board, level, text)
+
     def _event(self, board: str, level: str, text: str) -> None:
         self.events.append({"t": time.time(), "board": board, "level": level, "text": text})
 
@@ -387,10 +392,12 @@ class Aggregator:
             p["reachable"] = b.reachable
         afc = s.get("afc")
         if afc is not None:
-            if p.get("afc") is not None and afc["locked"] != p["afc"]:
+            if p.get("afc") is None:
+                p["afc"] = afc["locked"]
+            elif afc["locked"] != p["afc"] and now - p.get("afc_t", -1e9) >= 10:   # 来回跳时 10 s 内只记一条
                 self._event(b.name, "ok" if afc["locked"] else "warn",
                             f"AFC {'锁定' if afc['locked'] else '失锁，开始搜索'}（{afc['offset_hz'] / 1e3:+.1f} kHz）")
-            p["afc"] = afc["locked"]
+                p["afc"], p["afc_t"] = afc["locked"], now
         keys = set(s.get("keys") or [])
         for k in sorted(keys - p.get("keys", set())):
             fk = s.get("first_key") or {}
