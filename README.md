@@ -29,8 +29,11 @@ rmwave/
     client.py     订阅接收流图的鉴频输出，解析并回写 AFC
   flowgraphs/   GNU Radio 收发流图（Python 编写），说明见其 README
   io/           IQ 文件读写
+  telemetry.py  板子进程发给调试网页的状态 / 帧 / 频谱（ZMQ PUB）
+  webui/        调试网页（只读）：汇总遥测，HTTP + SSE 推给浏览器
 scripts/
   run_board.py          按 config 启动一块板（流图 + Python 侧）
+  webui.py              调试网页
   replay_iq.py          离线回放 IQ 文件
   fetch_tcr_samples.sh  下载 TCR 赛场实录 IQ（测试用）
 config/         板子 IP、角色、端口
@@ -65,6 +68,27 @@ python3 scripts/run_board.py rx_jam --show         # 收干扰波，打印每一
 
 `--team`、`--level` 可临时覆盖配置。没有硬件时加 `--sim 文件`：发射写 IQ 文件、接收读 IQ 文件，用来检查整套流程。
 发射衰减默认 70 dB，实验室近距离先从大衰减开始。比赛机上不能发射（制作规范 S23）。
+
+### 调试网页
+
+```bash
+python3 scripts/webui.py      # 浏览器打开 http://127.0.0.1:8800
+```
+
+只看不控制。网页和各块板谁先开都行，网页没开也不影响收发。能看到：
+
+- 每块板：ping 是否在线、`run_board.py` 进程是否在跑、频点、发包 / 收包速率、AFC、CRC 失败、密钥
+- 接收板：实时频谱和瀑布图（中心 ±500 kHz，标出红蓝双方各波的位置和 AFC 偏移）、
+  解析诊断（接入码、包头、CRC8 / CRC16 的累计和近 10 s 计数）、各命令最近到达和帧率、最近帧内容
+
+遥测端口默认由每块板的 `ctrl` 端口推出（状态 `ctrl+1000`，频谱 `ctrl+2000`），也可在 `boards.yaml` 里用
+`status` / `spectrum` 写死。不接硬件时配合 `--sim` 使用：
+
+```bash
+python3 scripts/run_board.py tx_jam --sim /tmp/jam.c64 --seconds 30
+python3 scripts/webui.py &
+python3 scripts/run_board.py rx_jam --sim /tmp/jam.c64
+```
 
 ## 开发流程
 

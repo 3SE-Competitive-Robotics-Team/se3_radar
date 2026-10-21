@@ -131,3 +131,41 @@ def test_xmlrpc_set_offset(tmp_path):
         assert proxy.get_offset() == pytest.approx(12345.0)
     finally:
         server.shutdown()
+
+
+def test_rx_flowgraph_spectrum_tap(tmp_path):
+    """调试网页的频谱：+200 kHz、幅度 0.5 的单音应落在对应 bin，约 -6 dBFS，约 20 帧/秒。"""
+    import numpy as np
+    import zmq
+
+    from rmwave.telemetry import SPECTRUM_SIZE
+
+    fs, f0, amp, seconds = phy.SAMPLE_RATE, 200e3, 0.5, 0.5
+    n = np.arange(int(seconds * fs))
+    path = tmp_path / "tone.c64"
+    (amp * np.exp(2j * np.pi * f0 / fs * n)).astype(np.complex64).tofile(path)
+
+    addr = f"tcp://127.0.0.1:{free_port()}"
+    sub = zmq.Context.instance().socket(zmq.SUB)
+    sub.setsockopt(zmq.SUBSCRIBE, b"")
+    sub.connect(addr)
+    tb = RxFlowgraph(phy.wave_spec(phy.Team.RED, 0), f"tcp://127.0.0.1:{free_port()}", in_file=str(path),
+                     spectrum_addr=addr)
+    time.sleep(0.3)
+    tb.start()
+    vectors = []
+    end = time.monotonic() + seconds + 2
+    while time.monotonic() < end:
+        if sub.poll(100):
+            x = np.frombuffer(sub.recv(), dtype=np.float32)
+            vectors += list(x.reshape(-1, SPECTRUM_SIZE))
+    tb.stop()
+    tb.wait()
+    sub.close(linger=0)
+
+    assert 5 <= len(vectors) <= 15                     # 0.5 s × 约 20 帧/秒
+    db = np.mean(vectors, axis=0)
+    expect_bin = SPECTRUM_SIZE // 2 + round(f0 / fs * SPECTRUM_SIZE)
+    assert abs(int(np.argmax(db)) - expect_bin) <= 1
+    assert db.max() == pytest.approx(20 * np.log10(amp), abs=1.5)
+    assert np.median(db) < -60

@@ -90,8 +90,12 @@ def main(argv=None) -> int:
     return 0
 
 
-def run(rx: StreamReceiver, show: bool = False, stop=None) -> None:
-    """一直收，每秒打印一行统计；Ctrl-C 或 stop() 为真时退出（退出前把剩余数据收完）。"""
+def run(rx: StreamReceiver, show: bool = False, stop=None, on_frame=None, on_status=None,
+        status_interval: float = 0.5) -> None:
+    """一直收，每秒打印一行统计；Ctrl-C 或 stop() 为真时退出（退出前把剩余数据收完）。
+
+    on_frame(frame) 每解出一帧调一次；on_status(counts) 每 status_interval 秒调一次（给调试网页发遥测）。
+    """
     counts: Counter = Counter()
 
     def handle(frames):
@@ -99,6 +103,8 @@ def run(rx: StreamReceiver, show: bool = False, stop=None) -> None:
             counts[f"0x{f.cmd_id:04X}"] += 1
             if show:
                 print(f"seq={f.seq:3d} 0x{f.cmd_id:04X} {f.message}", flush=True)
+            if on_frame is not None:
+                on_frame(f)
 
     def report():
         s = rx.decoder.demod.stats
@@ -108,17 +114,23 @@ def run(rx: StreamReceiver, show: bool = False, stop=None) -> None:
               f"CRC16失败 {rx.decoder.reassembler.stats.crc16_fail} AFC {lock} {rx.tracker.offset_hz / 1e3:+.1f} kHz"
               + (f" 密钥 {keys}" if keys else ""), flush=True)
 
-    last = time.monotonic()
+    last = last_status = time.monotonic()
     try:
         while stop is None or not stop():
             handle(rx.poll())
-            if time.monotonic() - last >= 1.0:
+            now = time.monotonic()
+            if on_status is not None and now - last_status >= status_interval:
+                on_status(counts)
+                last_status = now
+            if now - last >= 1.0:
                 report()
-                last = time.monotonic()
+                last = now
         for _ in range(5):
             handle(rx.poll(100))
         handle(rx.flush())
         report()
+        if on_status is not None:
+            on_status(counts)
     except KeyboardInterrupt:
         pass
     rx.close()
