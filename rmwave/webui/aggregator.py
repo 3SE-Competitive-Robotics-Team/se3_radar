@@ -97,7 +97,7 @@ def rx_funnel(name: str, running: bool, status: dict, win: dict, level: dict | N
         st.append(_stage("stream", "采样流", "warn", f"{(ratio or 0):.2f} MS/s",
                          f"数据流有断档（近 {win['window']:.0f} s {stalls} 次）：USB 链路不稳，会丢包"))
     else:
-        st.append(_stage("stream", "采样流", "ok", f"{(ratio or 1):.2f} MS/s"))
+        st.append(_stage("stream", "采样流", "ok", "统计中" if ratio is None else f"{ratio:.2f} MS/s"))
 
     if not level:
         st.append(_stage("level", "电平", "idle", "—"))
@@ -247,8 +247,21 @@ class BoardView:
             v = v[k]
         return v
 
+    RESTART_KEYS = (("seconds",), ("sent_packets",), ("stream", "wall_s"), ("uptime_s",))
+
+    def _since_restart(self, pts: list) -> list:
+        """板子进程重启后计数归零：只保留最后一次重启之后的点，否则差值会是负数。"""
+        start = 0
+        for i in range(1, len(pts)):
+            for path in self.RESTART_KEYS:
+                a, b = self._get(pts[i - 1][1], path), self._get(pts[i][1], path)
+                if a is not None and b is not None and b < a:
+                    start = i
+                    break
+        return pts[start:]
+
     def window_stats(self, now: float) -> dict:
-        pts = [(t, s) for t, s in self.history if now - t <= self.window]
+        pts = self._since_restart([(t, s) for t, s in self.history if now - t <= self.window])
         out = {"window": self.window, "dt": None}
         if len(pts) < 2:
             return out

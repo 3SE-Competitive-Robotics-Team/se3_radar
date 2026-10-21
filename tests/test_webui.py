@@ -194,6 +194,23 @@ def test_aggregator_window_stats_level_and_events():
         agg.close()
 
 
+def test_window_stats_ignore_process_restart():
+    """进程重启后计数归零，窗口统计只能用重启之后的点，不能算出负速率而误报断流。"""
+    cfg = {"boards": {"rx": board_cfg()}}
+    agg = Aggregator(cfg, probe_interval=None)
+    try:
+        now = time.monotonic()
+        seq = [(now - 8, 28.0), (now - 6, 30.0), (now - 4, 0.5), (now - 2, 2.5), (now, 4.5)]
+        for t, sec in seq:
+            agg._handle("rx", "status", status_msg(role="rx", seconds=sec, demod={"packets": int(sec * 98)},
+                                                   stream={"stalls": 0, "idle_s": 0.01, "wall_s": sec}), t)
+        b = agg.snapshot()["boards"][0]
+        assert abs(b["win"]["stream_ratio"] - 1.0) < 0.01 and b["win"]["packets"] >= 0
+        assert next(s for s in b["funnel"] if s["key"] == "stream")["state"] == "ok"
+    finally:
+        agg.close()
+
+
 def test_aggregator_process_stop_event():
     cfg = {"boards": {"rx": board_cfg()}}
     agg = Aggregator(cfg, probe_interval=None, stale=3.0)
