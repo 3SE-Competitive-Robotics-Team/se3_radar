@@ -13,6 +13,7 @@
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -47,16 +48,22 @@ def main() -> int:
     level = 0 if board["wave"] == "info" else (args.level or cfg["jam_level"])
     spec = phy.wave_spec(phy.Team(team), level)
 
-    status_addr, spectrum_addr = telemetry.addresses(board)
-    pub = telemetry.Publisher(status_addr, args.board)
+    addrs = telemetry.addresses(board)
+    pub = telemetry.Publisher(addrs.status, args.board)
     if pub.error:
         print(f"[{args.board}] 调试网页遥测关闭（{pub.error}）", flush=True)
     try:
         if board["role"] == "tx":
             return run_tx(board, spec, team, level, args, pub)
-        return run_rx(board, spec, team, level, args, pub, spectrum_addr)
+        return run_rx(board, spec, team, level, args, pub, addrs)
     finally:
         pub.close()
+
+
+def start_flowgraph(cmd: list[str]) -> subprocess.Popen:
+    """流图子进程的输出交给 telemetry.FlowgraphMonitor：数欠载 / 溢出和报错，其余照常打印。"""
+    env = dict(os.environ, PYTHONUNBUFFERED="1")
+    return subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
 
 def run_tx(board, spec, team, level, args, pub) -> int:
@@ -73,12 +80,17 @@ def run_tx(board, spec, team, level, args, pub) -> int:
            "--zmq", board["zmq"], "--ctrl-port", str(board["ctrl"]), "--attenuation", str(board.get("attenuation", 70))]
     cmd += ["--out", args.sim, "--seconds", str(args.seconds)] if args.sim else ["--uri", board["uri"]]
     print(f"[{args.board}] 发射 {desc} @ {spec.center_hz / 1e6:.2f} MHz", flush=True)
-    proc = subprocess.Popen(cmd, cwd=ROOT)
-    last = time.monotonic()
+    proc = start_flowgraph(cmd)
+    mon = telemetry.FlowgraphMonitor(proc)
+    started = last = time.monotonic()
+
+    def status():
+        return telemetry.tx_status(board, spec, team, srv.sent_packets, key, mon.status(), started)
+
     try:
         while proc.poll() is None:
             time.sleep(0.5)
-            pub.send(telemetry.tx_status(board, spec, team, srv.sent_packets, key))
+            pub.send(status())
             if time.monotonic() - last >= 1.0:
                 print(f"[{args.board}] 已发 {srv.sent_packets} 包", flush=True)
                 last = time.monotonic()
@@ -86,24 +98,28 @@ def run_tx(board, spec, team, level, args, pub) -> int:
         proc.terminate()
     proc.wait()
     srv.close()
-    pub.send(telemetry.tx_status(board, spec, team, srv.sent_packets, key))
+    pub.send(status())
     return proc.returncode or 0
 
 
-def run_rx(board, spec, team, level, args, pub, spectrum_addr) -> int:
+def run_rx(board, spec, team, level, args, pub, addrs) -> int:
     offset = float(board.get("offset", 0))
     rx = StreamReceiver(spec, board["zmq"], f"http://127.0.0.1:{board['ctrl']}", offset)
     cmd = [sys.executable, "-m", "rmwave.flowgraphs.rx", "--team", team, "--level", str(level),
            "--zmq", board["zmq"], "--ctrl-port", str(board["ctrl"]), "--offset", str(offset),
-           "--gain-mode", board.get("gain_mode", "slow_attack"), "--spectrum", spectrum_addr]
+           "--gain-mode", board.get("gain_mode", "slow_attack"),
+           "--spectrum", addrs.spectrum, "--level-pub", addrs.level]
     cmd += ["--file", args.sim] if args.sim else ["--uri", board["uri"]]
     print(f"[{args.board}] 接收 {spec.kind.value} L{level} @ {spec.center_hz / 1e6:.2f} MHz", flush=True)
     time.sleep(0.3)  # 先让 SUB 连上
-    proc = subprocess.Popen(cmd, cwd=ROOT)
+    proc = start_flowgraph(cmd)
+    mon = telemetry.FlowgraphMonitor(proc)
+    gain_mode = board.get("gain_mode", "slow_attack")
     try:
         run(rx, args.show, stop=lambda: proc.poll() is not None,
             on_frame=lambda f: pub.send(telemetry.frame_event(f)),
-            on_status=lambda counts: pub.send(telemetry.rx_status(rx, counts, board, spec, team)))
+            on_status=lambda counts: pub.send(
+                telemetry.rx_status(rx, counts, board, spec, team, dict(mon.status(), gain_mode=gain_mode))))
     finally:
         if proc.poll() is None:
             proc.terminate()

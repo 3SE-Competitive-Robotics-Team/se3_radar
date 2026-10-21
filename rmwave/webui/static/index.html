@@ -6,317 +6,484 @@
 <title>信息波调试台</title>
 <style>
 :root {
-  --bg: #f4f5f7; --panel: #ffffff; --line: #dfe2e7; --text: #1d2229; --muted: #6a7380;
-  --ok: #1f9d55; --warn: #c27c0e; --bad: #d1352b; --idle: #8b95a1; --accent: #2563eb;
-  --plot-bg: #0f1419; --plot-grid: #26303b; --plot-text: #9aa7b4; --trace: #4fd1c5; --hold: #f6ad55;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0e1116; --panel: #161b22; --line: #2a313b; --text: #e6e9ee; --muted: #8b95a1;
-    --ok: #3fb950; --warn: #d29922; --bad: #f85149; --idle: #6e7681; --accent: #58a6ff;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0e1116; --panel: #161b22; --line: #2a313b; --text: #e6e9ee; --muted: #8b95a1;
-  --ok: #3fb950; --warn: #d29922; --bad: #f85149; --idle: #6e7681; --accent: #58a6ff;
+  --bg: #0a0d12; --panel: #11151c; --panel-2: #161b24; --line: #212834; --line-2: #2b3442;
+  --text: #dbe1e9; --muted: #7c8796; --faint: #4f5a68;
+  --accent: #2dd4bf; --ok: #34d399; --warn: #fbbf24; --bad: #f87171; --idle: #4b5563;
+  --ok-bg: rgba(52,211,153,.10); --warn-bg: rgba(251,191,36,.10); --bad-bg: rgba(248,113,113,.12); --idle-bg: rgba(75,85,99,.12);
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
-header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
-  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
-header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px;
-  border: 1px solid var(--line); font-size: 12px; color: var(--muted); white-space: nowrap; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); flex: none; }
-.dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
-.spacer { flex: 1; }
-button.theme { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px;
-  padding: 2px 8px; cursor: pointer; font: inherit; font-size: 12px; }
-main { padding: 16px; max-width: 1500px; margin: 0 auto; display: grid; gap: 16px; }
-.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-.card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
-.card { padding: 12px 14px; }
-.card h2, .panel h2 { margin: 0; font-size: 15px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.sub { color: var(--muted); font-size: 12px; }
-.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 8px; font-size: 13px; }
-.kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
-.badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-.panel { padding: 12px 14px; display: grid; gap: 12px; }
-.panel-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 2.2fr) minmax(280px, 1fr); }
-@media (max-width: 900px) { .panel-grid { grid-template-columns: 1fr; } }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 13px/1.45 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .idle { color: var(--muted); }
+
+/* 顶栏 */
+.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 8px 16px; background: rgba(10,13,18,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; letter-spacing: .02em; }
+.brand i { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line-2);
+  border-radius: 999px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--idle); flex: none; }
+.dot.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); } .dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); box-shadow: 0 0 6px var(--bad); } .dot.idle { background: var(--idle); }
+.grow { flex: 1; }
+
+/* 板子条 */
+.strip { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); padding: 12px 16px 0; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--idle); border-radius: 8px;
+  padding: 8px 10px; display: grid; gap: 3px; min-width: 0; }
+.tile.ok { border-left-color: var(--ok); } .tile.warn { border-left-color: var(--warn); } .tile.bad { border-left-color: var(--bad); }
+.tile-head { display: flex; align-items: center; gap: 6px; }
+.tile-head b { font-family: var(--mono); font-size: 13px; }
+.tag { font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line-2); }
+.tile .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .main { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lights { display: flex; gap: 10px; font-size: 11.5px; color: var(--muted); }
+.lights span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* 布局 */
+.layout { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) 330px; padding: 12px 16px 24px; align-items: start; }
+@media (max-width: 1150px) { .layout { grid-template-columns: 1fr; } }
+.side { display: grid; gap: 12px; position: sticky; top: 52px; }
+@media (max-width: 1150px) { .side { position: static; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.panel-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 12px 0; }
+.panel-head h2 { margin: 0; font: 600 14px var(--mono); }
+.panel-body { padding: 10px 12px 12px; display: grid; gap: 10px; }
+.rx-list { display: grid; gap: 12px; min-width: 0; }
+.h3 { font-size: 11.5px; color: var(--muted); letter-spacing: .04em; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; }
+
+/* 结论 */
+.verdict { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13.5px; border: 1px solid; }
+.verdict.ok { background: var(--ok-bg); border-color: rgba(52,211,153,.35); }
+.verdict.warn { background: var(--warn-bg); border-color: rgba(251,191,36,.35); }
+.verdict.bad { background: var(--bad-bg); border-color: rgba(248,113,113,.4); }
+.verdict.idle { background: var(--idle-bg); border-color: var(--line-2); color: var(--muted); }
+.verdict b { white-space: nowrap; }
+
+/* 漏斗 */
+.funnel { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
+@media (max-width: 900px) { .funnel { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.step { position: relative; background: var(--panel-2); border-top: 2px solid var(--idle); padding: 5px 7px 6px; min-width: 0; }
+.step:first-child { border-radius: 6px 0 0 6px; } .step:last-child { border-radius: 0 6px 6px 0; }
+.step.ok { border-top-color: var(--ok); } .step.warn { border-top-color: var(--warn); background: var(--warn-bg); }
+.step.bad { border-top-color: var(--bad); background: var(--bad-bg); }
+.step .l { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.step .v { font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 主体 */
+.rx-grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .rx-grid { grid-template-columns: 1fr; } }
+.instr { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; align-content: start; }
+@media (max-width: 520px) { .instr { grid-template-columns: 1fr; } }
+.box { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; min-width: 0; }
+canvas { display: block; width: 100%; border-radius: 6px; }
 .plot { position: relative; }
-canvas { width: 100%; display: block; border-radius: 6px; background: var(--plot-bg); }
-.readout { position: absolute; right: 8px; top: 6px; font: 12px ui-monospace, Consolas, monospace;
-  color: var(--plot-text); pointer-events: none; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 500; font-size: 12px; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-td.nowrap { white-space: nowrap; }
-.msg { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); word-break: break-all; }
-.key { font: 600 15px ui-monospace, Consolas, monospace; color: var(--accent); }
-.bad-text { color: var(--bad); } .ok-text { color: var(--ok); } .warn-text { color: var(--warn); }
-.empty { color: var(--muted); padding: 8px 0; }
-details > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-.section-title { font-size: 12px; color: var(--muted); margin: 0 0 4px; font-weight: 500; }
+.plot .ro { position: absolute; right: 8px; top: 5px; font: 11.5px var(--mono); color: #aab4c0; pointer-events: none; text-shadow: 0 0 3px #000; }
+.snr { font: 12px var(--mono); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 12px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; font-family: var(--mono); }
+.meter { position: relative; height: 8px; background: #0b0f15; border-radius: 4px; overflow: hidden; margin: 3px 0 6px; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
+.meter i.mean { background: #3b82f6; }
+.meter .clip { position: absolute; right: 0; top: 0; bottom: 0; width: 2px; background: var(--bad); }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 34px; }
+.bars div { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; position: relative; }
+.bars div.e { background: var(--warn); } .bars div.e2 { background: var(--bad); }
+.bars-x { display: flex; gap: 3px; font: 10.5px var(--mono); color: var(--faint); }
+.bars-x span { flex: 1; text-align: center; }
+
+/* 结果 */
+.result { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cmd { display: inline-grid; grid-template-columns: auto auto; gap: 0 6px; align-items: baseline; padding: 4px 8px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; }
+.cmd.stale { opacity: .45; } .cmd.missing { border-style: dashed; opacity: .5; }
+.cmd b { font: 600 12px var(--mono); } .cmd .r { font: 12px var(--mono); color: var(--accent); }
+.cmd .a { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
+.key { font: 700 20px var(--mono); color: var(--accent); letter-spacing: .08em; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+th, td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 500; }
+td.n { text-align: right; font-family: var(--mono); white-space: nowrap; }
+td.m { font: 11.5px var(--mono); color: var(--muted); word-break: break-all; }
+td.c { white-space: nowrap; font-family: var(--mono); }
+
+/* 侧栏 */
+.tx { display: grid; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.tx:last-child { border-bottom: 0; }
+.tx-head { display: flex; align-items: center; gap: 8px; }
+.tx-head b { font: 600 13px var(--mono); }
+.tx .health { font-size: 12px; }
+.events { max-height: 52vh; overflow: auto; padding: 4px 0; }
+.ev { display: grid; grid-template-columns: auto auto 1fr; gap: 6px; align-items: baseline; padding: 4px 12px; font-size: 12px; border-bottom: 1px solid var(--line); }
+.ev:last-child { border-bottom: 0; }
+.ev .t { font: 11px var(--mono); color: var(--faint); } .ev .b { font: 11.5px var(--mono); color: var(--muted); }
+.empty { color: var(--muted); font-size: 12px; padding: 8px 12px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>信息波调试台</h1>
-  <span class="chip" id="conn"><span class="dot"></span>连接中…</span>
-  <span class="chip" id="cfg">—</span>
-  <span class="spacer"></span>
-  <span class="chip" id="clock">—</span>
-  <button class="theme" id="theme" title="切换亮/暗">主题</button>
-</header>
-<main>
-  <section class="cards" id="cards"></section>
-  <section id="rx-panels" style="display:grid; gap:16px"></section>
-</main>
+<div class="top">
+  <div class="brand"><i></i>信息波调试台</div>
+  <span class="pill" id="cfg">—</span>
+  <span class="grow"></span>
+  <span class="pill" id="conn"><span class="dot"></span>连接中</span>
+  <span class="pill num" id="clock">—</span>
+</div>
+<div class="strip" id="strip"></div>
+<div class="layout">
+  <div class="rx-list" id="rx-list"></div>
+  <aside class="side">
+    <section class="panel"><div class="panel-head"><h2>发射板</h2></div><div id="tx-list"></div></section>
+    <section class="panel"><div class="panel-head"><h2>事件</h2><span class="muted" style="font-size:12px">最新在上</span></div><div class="events" id="events"></div></section>
+  </aside>
+</div>
 <script>
 "use strict";
-const FS = 1e6, N = 1024, DB_MIN = -130, DB_MAX = 0, WF_ROWS = 160;
+const FS = 1e6, N = 1024, DB_MIN = -130, DB_MAX = 0;
+const WAVE_COLORS = { red: "rgba(248,113,113,", blue: "rgba(96,165,250," };
+const INFO_CMDS = [["0x0A01", "位置"], ["0x0A02", "血量"], ["0x0A03", "弹量"], ["0x0A04", "宏观"], ["0x0A05", "增益"]];
 let state = null;
-const panels = {};          // name -> {spec, wf, hold, ...}
+const rx = {};      // name -> 面板对象
+let lastMsg = 0;
 
-// ---------- 主题 ----------
-(() => {
-  const btn = document.getElementById("theme");
-  let t = null;
-  try { t = localStorage.getItem("theme"); } catch (e) {}
-  if (t) document.documentElement.dataset.theme = t;
-  btn.onclick = () => {
-    const cur = document.documentElement.dataset.theme ||
-      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    const next = cur === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("theme", next); } catch (e) {}
-  };
-})();
-
-// ---------- 小工具 ----------
-const $ = (tag, attrs = {}, ...kids) => {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "class") el.className = v; else if (k === "html") el.innerHTML = v; else el.setAttribute(k, v);
-  }
-  for (const k of kids) if (k != null) el.append(k);
-  return el;
-};
-const fmt = (v, d = 1) => (v == null || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
-const mhz = hz => hz == null ? "—" : (hz / 1e6).toFixed(2) + " MHz";
+// ---------- 工具 ----------
+const $ = (sel, root = document) => root.querySelector(sel);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const f = (v, d = 1) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d);
 const khz = hz => hz == null ? "—" : (hz >= 0 ? "+" : "") + (hz / 1e3).toFixed(1) + " kHz";
-const age = s => s == null ? "—" : s < 1 ? "刚刚" : s < 60 ? s.toFixed(0) + " 秒前" : (s / 60).toFixed(0) + " 分钟前";
-const badge = (cls, text) => $("span", {class: "chip"}, $("span", {class: "dot " + cls}), text);
-const waveName = w => !w ? "—" : (w.team === "red" ? "红方" : "蓝方") + (w.level === 0 ? "信息波" : `干扰波 L${w.level}`);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const mhz = hz => hz == null ? "—" : (hz / 1e6).toFixed(2) + " MHz";
+const ago = s => s == null ? "—" : s < 1.5 ? "刚刚" : s < 60 ? `${s.toFixed(0)} 秒前` : `${(s / 60).toFixed(0)} 分钟前`;
+const waveName = w => !w ? "" : `${w.team === "red" ? "红方" : "蓝方"}${w.level === 0 ? "信息波" : "干扰波 L" + w.level}`;
+const dot = s => `<span class="dot ${s}"></span>`;
+const DPR = () => window.devicePixelRatio || 1;
+function fit(c) {
+  const w = Math.round(c.clientWidth * DPR()), h = Math.round(c.clientHeight * DPR());
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; return true; }
+  return false;
+}
+function setHTML(node, html) { if (node._h !== html) { node.innerHTML = html; node._h = html; } }
+function boardState(b) {
+  if (!b.running) return b.status_age == null ? "idle" : "bad";
+  return b.role === "rx" ? (b.verdict?.state ?? "idle") : (b.health?.state ?? "idle");
+}
+
+// ---------- 板子条 ----------
+function renderStrip() {
+  const strip = $("#strip");
+  const html = state.boards.map(b => {
+    const s = b.status || {}, st = boardState(b), w = s.wave;
+    const ping = b.reachable == null ? "idle" : b.reachable ? "ok" : "bad";
+    const proc = b.running ? "ok" : b.status_age == null ? "idle" : "bad";
+    let main;
+    if (b.role === "rx") main = b.running ? `<span class="${b.verdict.state}">${esc(b.verdict.state === "ok" ? "全链路正常" : b.verdict.stage + "：" + (b.funnel.find(x => x.label === b.verdict.stage)?.value ?? ""))}</span>` : `<span class="muted">未运行</span>`;
+    else main = b.running ? `<span class="${b.health.state}">${f(b.win.packets_rate, 1)} 包/s</span>${s.key ? ` · <span class="mono">${esc(s.key)}</span>` : ""}` : `<span class="muted">未运行</span>`;
+    return `<div class="tile ${st}">
+      <div class="tile-head"><b>${esc(b.name)}</b><span class="tag">${b.role === "tx" ? "发" : "收"}</span><span class="grow"></span>
+        <span class="lights"><span>${dot(ping)}板</span><span>${dot(proc)}进程</span></span></div>
+      <div class="sub">${esc(w ? waveName(w) + " · " + mhz(w.center_hz) : (b.wave_cfg === "info" ? "信息波" : "干扰波"))} · ${esc(b.uri || "")}</div>
+      <div class="main">${main}</div></div>`;
+  }).join("");
+  setHTML(strip, html);
+}
+
+// ---------- 接收板面板 ----------
+function makeRx(name) {
+  const p = { name, hold: null, db: null, hoverX: null };
+  const sec = el("section", "panel");
+  sec.innerHTML = `
+    <div class="panel-head"><h2>${esc(name)}</h2><span class="muted head-sub"></span></div>
+    <div class="panel-body">
+      <div class="verdict idle"><b class="vstage">—</b><span class="vtext">等待数据…</span></div>
+      <div class="funnel"></div>
+      <div class="rx-grid">
+        <div style="display:grid; gap:6px; align-content:start; min-width:0">
+          <p class="h3" style="margin:0"><span>频谱 · 瀑布图</span><span class="snr"></span></p>
+          <div class="plot"><canvas class="spec" style="height:210px"></canvas><div class="ro"></div></div>
+          <canvas class="wf" style="height:120px"></canvas>
+          <div class="faint" style="font-size:11px">横轴为中心频点 ±500 kHz。青线实时，橙线峰值保持；虚线是 AFC 偏移（绿=锁定，黄=搜索）；色块为红蓝双方各波的位置，亮框是本板要收的波。</div>
+        </div>
+        <div class="instr">
+          <div class="box"><p class="h3"><span>输入电平</span><span class="lvl-gain"></span></p><div class="lvl"></div><canvas class="lvl-c" style="height:46px"></canvas></div>
+          <div class="box"><p class="h3"><span>眼图</span><span class="eye-tag"></span></p><canvas class="eye" style="height:96px"></canvas></div>
+          <div class="box"><p class="h3"><span>AFC 频偏（120 s）</span><span class="afc-now mono"></span></p><canvas class="afc" style="height:78px"></canvas></div>
+          <div class="box"><p class="h3"><span>包质量</span><span class="q-n"></span></p><div class="quality"></div></div>
+        </div>
+      </div>
+      <div class="result"></div>
+      <details><summary>最近帧</summary><div class="recent"></div></details>
+    </div>`;
+  $("#rx-list").append(sec);
+  Object.assign(p, {
+    sec, sub: $(".head-sub", sec), vbox: $(".verdict", sec), vstage: $(".vstage", sec), vtext: $(".vtext", sec),
+    funnel: $(".funnel", sec), spec: $(".spec", sec), wf: $(".wf", sec), ro: $(".ro", sec), snr: $(".snr", sec),
+    lvl: $(".lvl", sec), lvlc: $(".lvl-c", sec), lvlGain: $(".lvl-gain", sec), eye: $(".eye", sec), eyeTag: $(".eye-tag", sec),
+    afc: $(".afc", sec), afcNow: $(".afc-now", sec), quality: $(".quality", sec), qn: $(".q-n", sec),
+    result: $(".result", sec), recent: $(".recent", sec),
+  });
+  p.spec.addEventListener("mousemove", e => { const r = p.spec.getBoundingClientRect(); p.hoverX = (e.clientX - r.left) / r.width; drawSpec(p); });
+  p.spec.addEventListener("mouseleave", () => { p.hoverX = null; p.ro.textContent = ""; drawSpec(p); });
+  rx[name] = p;
+  return p;
+}
+
+function renderRx(b) {
+  const p = rx[b.name] || makeRx(b.name);
+  p.b = b;
+  const s = b.status || {}, w = s.wave;
+  setHTML(p.sub, w ? `${esc(waveName(w))} · ${mhz(w.center_hz)} · 带宽 ${(w.bandwidth_hz / 1e3).toFixed(0)} kHz · ${esc(b.uri || "")}` : esc(b.uri || ""));
+  const v = b.verdict || {state: "idle", text: "等待数据…"};
+  p.vbox.className = `verdict ${v.state}`;
+  setHTML(p.vstage, v.state === "ok" ? "✓ 正常" : v.state === "idle" ? "…" : `卡在：${esc(v.stage)}`);
+  setHTML(p.vtext, esc(v.text));
+  setHTML(p.funnel, (b.funnel || []).map(x =>
+    `<div class="step ${x.state}" title="${esc(x.hint || "")}"><div class="l">${esc(x.label)}</div><div class="v">${esc(x.value)}</div></div>`).join(""));
+
+  // 电平
+  const lv = b.level, gm = s.flowgraph?.gain_mode;
+  setHTML(p.lvlGain, gm ? `增益 ${esc(gm)}` : "");
+  const pct = d => Math.max(0, Math.min(100, (d + 100) / 100 * 100));
+  setHTML(p.lvl, lv ? `
+    <dl class="kv"><dt>峰值</dt><dd class="${lv.peak_dbfs > -0.5 ? "bad" : ""}">${f(lv.peak_dbfs)} dBFS</dd></dl>
+    <div class="meter"><i style="width:${pct(lv.peak_dbfs)}%"></i><span class="clip"></span></div>
+    <dl class="kv"><dt>平均</dt><dd>${f(lv.mean_dbfs)} dBFS</dd></dl>
+    <div class="meter"><i class="mean" style="width:${pct(lv.mean_dbfs)}%"></i></div>` : `<div class="muted">没有电平数据</div>`);
+  drawLevel(p, b.level_series || []);
+
+  // 眼图
+  const eye = s.eye;
+  setHTML(p.eyeTag, !eye ? "" : eye.aligned ? `<span class="ok">按包对齐</span>` : `<span class="warn">未对齐·无包</span>`);
+  drawEye(p, eye);
+
+  // AFC
+  const afc = s.afc;
+  setHTML(p.afcNow, afc ? `<span class="${afc.locked ? "ok" : "warn"}">${afc.locked ? "锁定" : "搜索"}</span> ${khz(afc.offset_hz)}` : "");
+  drawAfc(p, b.afc_series || []);
+
+  // 包质量
+  const q = s.quality || {n: 0}, wc = b.win || {};
+  setHTML(p.qn, q.n ? `近 ${q.n} 包` : "");
+  if (q.n) {
+    const mx = Math.max(1, ...q.ac_err_hist);
+    setHTML(p.quality, `
+      <div class="bars">${q.ac_err_hist.map((c, i) => `<div class="${i >= 3 ? "e2" : i >= 1 ? "e" : ""}" style="height:${c / mx * 100}%" title="${c} 包"></div>`).join("")}</div>
+      <div class="bars-x">${q.ac_err_hist.map((_, i) => `<span>${i}</span>`).join("")}</div>
+      <div class="faint" style="font-size:10.5px; text-align:center; margin-bottom:4px">接入码误码位数</div>
+      <dl class="kv"><dt>相关值</dt><dd>${f(q.corr_med, 2)} <span class="faint">最低 ${f(q.corr_min, 2)}</span></dd>
+      <dt>残余频偏</dt><dd>${khz(q.cfo_med_hz)} <span class="faint">±${f(q.cfo_std_hz / 1e3, 1)}k</span></dd>
+      <dt>近 ${f(wc.window, 0)}s 被拒</dt><dd>${(wc.rejected_ac ?? 0) + (wc.rejected_header ?? 0)}</dd></dl>`);
+  } else {
+    setHTML(p.quality, `<div class="muted">还没解出空口包</div><dl class="kv" style="margin-top:6px"><dt>候选 / 被拒</dt><dd>${wc.candidates ?? "—"} / ${(wc.rejected_ac ?? 0) + (wc.rejected_header ?? 0)}</dd></dl>`);
+  }
+
+  // 结果
+  const cmds = Object.fromEntries((b.cmds || []).map(c => [c.cmd, c]));
+  let res;
+  if (w && w.kind === "jam") {
+    const fk = s.first_key;
+    res = s.keys && s.keys.length
+      ? `<span class="muted">密钥</span> <span class="key">${s.keys.map(esc).join(" ")}</span>` +
+        (fk ? `<span class="pill">收到数据后 <b class="num">${f(fk.since_data_s, fk.since_data_s < 1 ? 2 : 1)} s</b> 解出</span>` : "") +
+        (cmds["0x0A06"] ? `<span class="pill">${f(cmds["0x0A06"].rate, 1)} 帧/s · ${ago(cmds["0x0A06"].age)}</span>` : "")
+      : `<span class="muted">密钥</span> <span class="key faint">——————</span>`;
+  } else {
+    res = INFO_CMDS.map(([c, n]) => {
+      const x = cmds[c];
+      if (!x) return `<div class="cmd missing"><b>${n}</b><span class="r">—</span><span class="a">${c} 未收到</span></div>`;
+      return `<div class="cmd ${x.age > 3 ? "stale" : ""}" title="${esc(JSON.stringify(x.message))}"><b>${n}</b><span class="r">${f(x.rate, 1)}/s</span><span class="a">${c} · ${ago(x.age)}</span></div>`;
+    }).join("");
+  }
+  setHTML(p.result, res);
+  if (p.sec.querySelector("details").open) {
+    setHTML(p.recent, (b.recent || []).length ? `<table><thead><tr><th>命令</th><th>seq</th><th>内容</th><th>时间</th></tr></thead><tbody>${
+      b.recent.map(r => `<tr><td class="c">${r.cmd} ${esc(r.name)}</td><td class="n">${r.seq ?? "—"}</td><td class="m">${esc(msgText(r.message))}</td><td class="n">${ago(r.age)}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">还没解出帧</div>`);
+  }
+  const snr = b.snr_db;
+  p.snr.className = "snr " + (snr == null ? "idle" : snr >= 10 ? "ok" : snr >= 3 ? "warn" : "bad");
+  setHTML(p.snr, snr == null ? "" : `带内 SNR ${f(snr, 0)} dB`);
+  drawSpec(p);
+}
 function msgText(m) {
   if (m == null) return "（未知命令或长度不符）";
   return Object.entries(m).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" ");
 }
 
-// ---------- 板子卡片 ----------
-function boardBadges(b) {
-  const out = [];
-  out.push(b.reachable == null ? badge("", "板子 未探测") : b.reachable ? badge("ok", "板子 在线") : badge("bad", "板子 离线"));
-  out.push(b.running ? badge("ok", "进程 运行中") : badge(b.status_age == null ? "" : "warn",
-    b.status_age == null ? "进程 未启动" : "进程 已停止"));
-  return out;
+// ---------- 画图 ----------
+function grid(g, W, H, xs, ys) {
+  g.strokeStyle = "#1b222c"; g.lineWidth = 1;
+  for (const x of xs) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+  for (const y of ys) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
 }
-function card(b) {
-  const s = b.status || {}, w = s.wave, r = b.rates || {}, wc = b.window_counts || {};
-  const kv = [];
-  const row = (k, v) => kv.push($("dt", {}, k), $("dd", {html: v}));
-  row("地址", esc(b.uri || "—"));
-  row("频点", w ? mhz(w.center_hz) : "—");
-  if (b.role === "tx") {
-    row("已发包", s.sent_packets ?? "—");
-    row("发包速率", r.packets == null ? "—" : fmt(r.packets, 1) + " 包/秒");
-    row("发射衰减", s.attenuation_db == null ? "—" : fmt(s.attenuation_db, 0) + " dB");
-    if (s.key) row("密钥", `<span class="key">${esc(s.key)}</span>`);
-  } else {
-    const afc = s.afc || {};
-    row("空口包", (r.packets == null ? "—" : fmt(r.packets, 1)) + " 包/秒");
-    row("裁判帧", (r.frames == null ? "—" : fmt(r.frames, 1)) + " 帧/秒");
-    row("AFC", s.afc ? `<span class="${afc.locked ? "ok-text" : "warn-text"}">${afc.locked ? "锁定" : "搜索"}</span> ${khz(afc.offset_hz)}` : "—");
-    const c16 = wc.crc16_fail, c8 = wc.crc8_fail;
-    row(`CRC 失败（${b.window}s）`, (c8 == null && c16 == null) ? "—" :
-      `<span class="${(c8 || c16) ? "bad-text" : ""}">CRC8 ${c8 ?? "—"} · CRC16 ${c16 ?? "—"}</span>`);
-    if (s.keys && s.keys.length) row("密钥", s.keys.map(k => `<span class="key">${esc(k)}</span>`).join(" "));
-  }
-  return $("article", {class: "card"},
-    $("h2", {}, b.name, $("span", {class: "sub"}, (b.role === "tx" ? "发射 · " : "接收 · ") + (w ? waveName(w) : (b.wave_cfg === "info" ? "信息波" : "干扰波")))),
-    $("div", {class: "badges"}, ...boardBadges(b)),
-    $("dl", {class: "kv"}, ...kv));
-}
-
-// ---------- 接收板面板 ----------
-function ensurePanel(name) {
-  if (panels[name]) return panels[name];
-  const spec = $("canvas", {height: 220}), wf = $("canvas", {height: WF_ROWS});
-  const readout = $("div", {class: "readout"});
-  const title = $("h2", {}, name);
-  const diag = $("div"), cmds = $("div"), recent = $("div");
-  const el = $("section", {class: "panel"},
-    title,
-    $("div", {class: "panel-grid"},
-      $("div", {style: "display:grid; gap:8px"},
-        $("div", {class: "plot"}, spec, readout),
-        wf,
-        $("div", {class: "sub", id: `legend-${name}`})),
-      $("div", {style: "display:grid; gap:12px; align-content:start"},
-        $("div", {}, $("p", {class: "section-title"}, "解析诊断"), diag),
-        $("div", {}, $("p", {class: "section-title"}, "各命令最近到达"), cmds))),
-    $("details", {open: ""}, $("summary", {}, "最近帧"), recent));
-  document.getElementById("rx-panels").append(el);
-  const p = {name, el, title, spec, wf, readout, diag, cmds, recent, db: null, hold: null, board: null, hoverX: null};
-  spec.addEventListener("mousemove", e => { const r = spec.getBoundingClientRect(); p.hoverX = (e.clientX - r.left) / r.width; drawSpectrum(p); });
-  spec.addEventListener("mouseleave", () => { p.hoverX = null; p.readout.textContent = ""; drawSpectrum(p); });
-  panels[name] = p;
-  return p;
-}
-
-function fitCanvas(c) {
-  const dpr = window.devicePixelRatio || 1, w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
-  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; return true; }
-  return false;
-}
-function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
-
-function drawSpectrum(p) {
-  const c = p.spec; fitCanvas(c);
-  const g = c.getContext("2d"), W = c.width, H = c.height, dpr = window.devicePixelRatio || 1;
-  g.fillStyle = css("--plot-bg"); g.fillRect(0, 0, W, H);
-  const x = f => (f + FS / 2) / FS * W, y = d => (DB_MAX - d) / (DB_MAX - DB_MIN) * H;
-  // 网格
-  g.strokeStyle = css("--plot-grid"); g.lineWidth = 1; g.fillStyle = css("--plot-text"); g.font = `${11 * dpr}px ui-monospace, monospace`;
-  for (let d = DB_MIN; d <= DB_MAX; d += 20) { g.beginPath(); g.moveTo(0, y(d)); g.lineTo(W, y(d)); g.stroke(); g.fillText(`${d}`, 4 * dpr, y(d) - 3 * dpr); }
-  for (let f = -500e3; f <= 500e3; f += 100e3) { g.beginPath(); g.moveTo(x(f), 0); g.lineTo(x(f), H); g.stroke(); }
-  const b = p.board, s = b && b.status || {}, w = s.wave;
-  // 各波的位置（先画本板的波；其他标签与已画的重叠就不画）
-  const isOwn = m => w && m.level === w.level && m.team === w.team;
+function drawSpec(p) {
+  const c = p.spec; fit(c);
+  const g = c.getContext("2d"), W = c.width, H = c.height, d = DPR();
+  g.fillStyle = "#070a0e"; g.fillRect(0, 0, W, H);
+  const X = fr => (fr + FS / 2) / FS * W, Y = db => (DB_MAX - db) / (DB_MAX - DB_MIN) * H;
+  const dbs = []; for (let v = DB_MIN + 10; v < DB_MAX; v += 20) dbs.push(v);
+  grid(g, W, H, [-400e3, -200e3, 0, 200e3, 400e3].map(X), dbs.map(Y));
+  g.font = `${10.5 * d}px ${getComputedStyle(document.body).getPropertyValue("--mono") || "monospace"}`;
+  g.fillStyle = "#5b6676";
+  for (const v of dbs) g.fillText(String(v), 4 * d, Y(v) - 3 * d);
+  for (const fr of [-400e3, -200e3, 200e3, 400e3]) g.fillText(`${fr > 0 ? "+" : ""}${fr / 1e3}k`, X(fr) + 3 * d, H - 4 * d);
+  const b = p.b, s = (b && b.status) || {}, w = s.wave;
+  const own = m => w && m.level === w.level && m.team === w.team;
+  const marks = ((b && b.markers) || []).slice().sort((a, c2) => own(c2) - own(a));
   const drawn = [];
-  for (const m of ((b && b.markers) || []).slice().sort((a, c) => isOwn(c) - isOwn(a))) {
-    const own = isOwn(m);
-    g.fillStyle = own ? "rgba(79,209,197,0.16)" : (m.team === "red" ? "rgba(248,81,73,0.10)" : "rgba(88,166,255,0.10)");
-    g.fillRect(x(m.offset_hz - m.bandwidth_hz / 2), 0, x(m.offset_hz + m.bandwidth_hz / 2) - x(m.offset_hz - m.bandwidth_hz / 2), H);
-    g.fillStyle = own ? "#4fd1c5" : css("--plot-text");
-    const lw = g.measureText(m.label).width;
-    const lx = Math.max(32 * dpr, Math.min(W - lw - 4 * dpr, x(m.offset_hz - m.bandwidth_hz / 2) + 3 * dpr));
-    if (!drawn.some(([a, c]) => lx < c + 6 * dpr && lx + lw > a - 6 * dpr)) { g.fillText(m.label, lx, H - 6 * dpr); drawn.push([lx, lx + lw]); }
+  for (const m of marks.slice().reverse()) {
+    const x0 = X(m.offset_hz - m.bandwidth_hz / 2), x1 = X(m.offset_hz + m.bandwidth_hz / 2), col = WAVE_COLORS[m.team];
+    g.fillStyle = col + (own(m) ? "0.10)" : "0.07)"); g.fillRect(x0, 0, x1 - x0, H);
+    if (own(m)) { g.strokeStyle = "rgba(45,212,191,.55)"; g.lineWidth = d; g.strokeRect(x0 + d / 2, d / 2, x1 - x0 - d, H - d); }
   }
-  // AFC 当前偏移
+  for (const m of marks) {
+    const lw = g.measureText(m.label).width, lx = Math.max(36 * d, Math.min(W - lw - 4 * d, X(m.offset_hz - m.bandwidth_hz / 2) + 4 * d));
+    if (drawn.some(([a, z]) => lx < z + 6 * d && lx + lw > a - 6 * d)) continue;
+    g.fillStyle = own(m) ? "#2dd4bf" : WAVE_COLORS[m.team] + "0.85)"; g.fillText(m.label, lx, 14 * d); drawn.push([lx, lx + lw]);
+  }
   if (s.afc) {
-    g.strokeStyle = s.afc.locked ? "#3fb950" : "#d29922"; g.setLineDash([4 * dpr, 4 * dpr]);
-    g.beginPath(); g.moveTo(x(s.afc.offset_hz), 0); g.lineTo(x(s.afc.offset_hz), H); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = s.afc.locked ? "#34d399" : "#fbbf24"; g.setLineDash([4 * d, 4 * d]); g.lineWidth = d;
+    g.beginPath(); g.moveTo(X(s.afc.offset_hz), 0); g.lineTo(X(s.afc.offset_hz), H); g.stroke(); g.setLineDash([]);
   }
-  const trace = (arr, color, width) => {
-    g.strokeStyle = color; g.lineWidth = width * dpr; g.beginPath();
-    for (let i = 0; i < arr.length; i++) { const px = (i + 0.5) / arr.length * W, py = y(Math.max(DB_MIN, Math.min(DB_MAX, arr[i]))); i ? g.lineTo(px, py) : g.moveTo(px, py); }
+  const trace = (arr, color, lw) => {
+    g.strokeStyle = color; g.lineWidth = lw * d; g.beginPath();
+    for (let i = 0; i < arr.length; i++) { const px = (i + .5) / arr.length * W, py = Y(Math.max(DB_MIN, Math.min(DB_MAX, arr[i]))); i ? g.lineTo(px, py) : g.moveTo(px, py); }
     g.stroke();
   };
-  if (p.hold) trace(p.hold, css("--hold"), 1);
-  if (p.db) trace(p.db, css("--trace"), 1.2);
-  if (!p.db) { g.fillStyle = css("--plot-text"); g.font = `${13 * dpr}px system-ui, sans-serif`; g.fillText("还没有频谱数据（接收板进程未运行？）", 12 * dpr, 24 * dpr); }
-  // 鼠标读数
+  if (p.hold) trace(p.hold, "rgba(251,146,60,.55)", 1);
+  if (p.db) trace(p.db, "#2dd4bf", 1.2);
+  else { g.fillStyle = "#7c8796"; g.font = `${12.5 * d}px system-ui, sans-serif`; g.fillText("没有频谱数据", 44 * d, 40 * d); }
   if (p.hoverX != null && p.db) {
-    const i = Math.max(0, Math.min(N - 1, Math.floor(p.hoverX * N))), f = (i + 0.5) / N * FS - FS / 2;
-    g.strokeStyle = "rgba(255,255,255,0.35)"; g.beginPath(); g.moveTo(p.hoverX * W, 0); g.lineTo(p.hoverX * W, H); g.stroke();
-    const abs = w ? ((w.center_hz + f) / 1e6).toFixed(4) + " MHz" : "";
-    p.readout.textContent = `${khz(f)}  ${abs}  ${p.db[i].toFixed(1)} dBFS`;
+    const i = Math.max(0, Math.min(N - 1, Math.floor(p.hoverX * N))), fr = (i + .5) / N * FS - FS / 2;
+    g.strokeStyle = "rgba(255,255,255,.3)"; g.beginPath(); g.moveTo(p.hoverX * W, 0); g.lineTo(p.hoverX * W, H); g.stroke();
+    p.ro.textContent = `${khz(fr)}${w ? "  " + ((w.center_hz + fr) / 1e6).toFixed(4) + " MHz" : ""}  ${p.db[i].toFixed(1)} dBFS`;
   }
 }
-
-function colormap(t) {   // 0..1 → 深蓝-青-黄-白
+function cmap(t) {
   t = Math.max(0, Math.min(1, t));
-  const stops = [[0, [8, 12, 30]], [0.35, [20, 70, 140]], [0.6, [40, 180, 170]], [0.85, [240, 210, 80]], [1, [255, 255, 240]]];
-  for (let k = 1; k < stops.length; k++) if (t <= stops[k][0]) {
-    const [t0, c0] = stops[k - 1], [t1, c1] = stops[k], u = (t - t0) / (t1 - t0);
-    return c0.map((v, j) => Math.round(v + (c1[j] - v) * u));
-  }
-  return stops[stops.length - 1][1];
+  const S = [[0, [7, 10, 14]], [.3, [14, 52, 96]], [.55, [20, 150, 140]], [.8, [240, 200, 70]], [1, [255, 250, 230]]];
+  for (let k = 1; k < S.length; k++) if (t <= S[k][0]) { const [a, ca] = S[k - 1], [z, cz] = S[k], u = (t - a) / (z - a); return ca.map((v, j) => v + (cz[j] - v) * u); }
+  return S[S.length - 1][1];
 }
-function pushWaterfall(p, db) {
-  const c = p.wf, resized = fitCanvas(c), g = c.getContext("2d"), W = c.width, H = c.height;
-  if (resized) { g.fillStyle = css("--plot-bg"); g.fillRect(0, 0, W, H); }
-  const rowH = Math.max(1, Math.round(H / WF_ROWS));
-  g.drawImage(c, 0, 0, W, H - rowH, 0, rowH, W, H - rowH);
+function pushWf(p, db) {
+  const c = p.wf, g = c.getContext("2d");
+  const w = Math.round(c.clientWidth * DPR()), h = Math.round(c.clientHeight * DPR());
+  if (c.width !== w || c.height !== h) {          // 尺寸变了（如出现滚动条）：保留已有画面，拉伸过去
+    const old = document.createElement("canvas");
+    old.width = c.width; old.height = c.height;
+    if (c.width && c.height) old.getContext("2d").drawImage(c, 0, 0);
+    c.width = w; c.height = h;
+    g.fillStyle = "#070a0e"; g.fillRect(0, 0, w, h);
+    if (old.width > 1 && old.height > 1) g.drawImage(old, 0, 0, w, h);
+  }
+  const W = c.width, H = c.height, rh = Math.max(1, Math.round(DPR()));
+  g.drawImage(c, 0, 0, W, H - rh, 0, rh, W, H - rh);
   const img = g.createImageData(W, 1);
-  for (let px = 0; px < W; px++) {
-    const i = Math.min(N - 1, Math.floor(px / W * N)), [r, gg, bb] = colormap((db[i] - (-110)) / 100);
-    img.data.set([r, gg, bb, 255], px * 4);
+  for (let x = 0; x < W; x++) { const [r, gg, bb] = cmap((db[Math.min(N - 1, Math.floor(x / W * N))] + 110) / 100); img.data.set([r, gg, bb, 255], x * 4); }
+  for (let k = 0; k < rh; k++) g.putImageData(img, 0, k);
+}
+function drawLevel(p, series) {
+  const c = p.lvlc; fit(c);
+  const g = c.getContext("2d"), W = c.width, H = c.height, d = DPR();
+  g.fillStyle = "#070a0e"; g.fillRect(0, 0, W, H);
+  const X = t => (t + 10) / 10 * W, Y = db => (0 - db) / 100 * H;
+  g.strokeStyle = "rgba(248,113,113,.6)"; g.beginPath(); g.moveTo(0, Y(-0.5)); g.lineTo(W, Y(-0.5)); g.stroke();
+  for (const [idx, col] of [[2, "#3b82f6"], [1, "#2dd4bf"]]) {
+    g.strokeStyle = col; g.lineWidth = d; g.beginPath();
+    series.forEach((r, i) => { const x = X(r[0]), y = Y(Math.max(-100, Math.min(-0.3, r[idx]))); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
   }
-  for (let k = 0; k < rowH; k++) g.putImageData(img, 0, k);
+}
+function drawEye(p, eye) {
+  const c = p.eye; fit(c);
+  const g = c.getContext("2d"), W = c.width, H = c.height, d = DPR();
+  g.fillStyle = "#070a0e"; g.fillRect(0, 0, W, H);
+  const Y = v => H / 2 - v / 2 * (H / 2 - 4 * d);
+  grid(g, W, H, [W / 4, W / 2, 3 * W / 4], [Y(1), Y(0), Y(-1)]);
+  if (!eye) { g.fillStyle = "#7c8796"; g.font = `${11.5 * d}px system-ui`; g.fillText("没有数据", 8 * d, 16 * d); return; }
+  const sps = eye.sps, x = eye.samples, span = 2 * sps;
+  g.strokeStyle = eye.aligned ? "rgba(45,212,191,.35)" : "rgba(251,191,36,.3)"; g.lineWidth = d;
+  for (let s0 = 0; s0 + span <= x.length; s0 += sps) {
+    g.beginPath();
+    for (let i = 0; i <= span && s0 + i < x.length; i++) { const px = i / span * W, py = Y(Math.max(-2, Math.min(2, x[s0 + i]))); i ? g.lineTo(px, py) : g.moveTo(px, py); }
+    g.stroke();
+  }
+}
+function drawAfc(p, series) {
+  const c = p.afc; fit(c);
+  const g = c.getContext("2d"), W = c.width, H = c.height, d = DPR();
+  g.fillStyle = "#070a0e"; g.fillRect(0, 0, W, H);
+  const lim = Math.max(2000, ...series.map(r => Math.abs(r[1]) * 1.2));
+  const X = t => (t + 120) / 120 * W, Y = v => H / 2 - v / lim * (H / 2 - 3 * d);
+  grid(g, W, H, [X(-90), X(-60), X(-30)], [Y(0)]);
+  g.fillStyle = "#5b6676"; g.font = `${10 * d}px monospace`; g.fillText(`±${(lim / 1e3).toFixed(1)}k`, 4 * d, 11 * d);
+  for (let i = 1; i < series.length; i++) {
+    const [t0, v0] = series[i - 1], [t1, v1, lk] = series[i];
+    g.strokeStyle = lk ? "#34d399" : "#fbbf24"; g.lineWidth = 1.4 * d;
+    g.beginPath(); g.moveTo(X(t0), Y(v0)); g.lineTo(X(t1), Y(v1)); g.stroke();
+  }
 }
 
-function onSpectrum(msg) {
-  const p = panels[msg.board]; if (!p) return;
-  p.db = msg.db;
-  if (!p.hold) p.hold = msg.db.slice();
-  else for (let i = 0; i < N; i++) p.hold[i] = Math.max(msg.db[i], p.hold[i] - 0.15);
-  drawSpectrum(p); pushWaterfall(p, msg.db);
+// ---------- 侧栏 ----------
+function renderTx() {
+  const txs = state.boards.filter(b => b.role === "tx");
+  setHTML($("#tx-list"), txs.length ? txs.map(b => {
+    const s = b.status || {}, w = s.wave, h = b.health || {state: "idle", text: ""}, wc = b.win || {}, fg = s.flowgraph || {};
+    const rate = wc.packets_rate, full = state.packets_per_s;
+    return `<div class="tx">
+      <div class="tx-head">${dot(boardState(b))}<b>${esc(b.name)}</b><span class="muted">${esc(w ? waveName(w) + " · " + mhz(w.center_hz) : "")}</span></div>
+      <div class="health ${h.state}">${esc(h.text)}</div>
+      ${b.running || b.status_age != null ? `
+      <div class="meter" title="发包速率 / 满载"><i style="width:${Math.min(100, (rate || 0) / full * 100)}%"></i></div>
+      <dl class="kv"><dt>发包速率</dt><dd>${f(rate, 1)} / ${f(full, 1)} 包/s</dd>
+        <dt>已发</dt><dd>${s.sent_packets ?? "—"}</dd>
+        <dt>欠载（累计 / 近 ${f(wc.window, 0)}s）</dt><dd class="${wc.underflows ? "warn" : ""}">${fg.underflows ?? "—"} / ${wc.underflows ?? "—"}</dd>
+        <dt>流图报错</dt><dd class="${fg.errors ? "bad" : ""}">${fg.errors ?? "—"}</dd>
+        <dt>发射衰减</dt><dd>${f(s.attenuation_db, 0)} dB</dd>
+        ${s.key ? `<dt>密钥</dt><dd class="ok">${esc(s.key)}</dd>` : ""}</dl>` : ""}
+    </div>`;
+  }).join("") : `<div class="empty">配置里没有发射板</div>`);
 }
-
-function renderPanel(b) {
-  const p = ensurePanel(b.name); p.board = b;
-  const s = b.status || {}, w = s.wave, d = s.demod || {}, re = s.reassembler || {}, wc = b.window_counts || {};
-  p.title.replaceChildren(b.name, $("span", {class: "sub"}, w ? `${waveName(w)} · ${mhz(w.center_hz)} · 带宽 ${(w.bandwidth_hz / 1e3).toFixed(0)} kHz` : "等待状态…"), ...boardBadges(b));
-  document.getElementById(`legend-${b.name}`).textContent =
-    `横轴：中心频点 ±500 kHz；青色线为实时频谱，橙色为峰值保持；虚线为 AFC 当前偏移（绿=锁定，黄=搜索）；色块为红蓝双方各波的位置。频谱 ${age(b.spectrum_age)}`;
-  const diagRows = [
-    ["接入码候选", d.candidates, wc.candidates], ["空口包（通过）", d.packets, wc.packets],
-    ["接入码误码过多", d.rejected_ac, wc.rejected_ac], ["包头不符", d.rejected_header, wc.rejected_header],
-    ["极性反转", d.inverted, null], ["裁判帧", re.frames, wc.frames],
-    ["CRC8 失败", re.crc8_fail, wc.crc8_fail], ["CRC16 失败", re.crc16_fail, wc.crc16_fail],
-    ["跳过字节（含帧间 0x00 填充）", re.dropped_bytes, wc.dropped_bytes],
-  ];
-  p.diag.replaceChildren($("table", {},
-    $("thead", {}, $("tr", {}, $("th", {}, "项"), $("th", {class: "num"}, "累计"), $("th", {class: "num"}, `近 ${b.window}s`))),
-    $("tbody", {}, ...diagRows.map(([k, tot, win]) => {
-      const bad = /失败|过多|不符/.test(k) && win > 0;
-      return $("tr", {}, $("td", {}, k), $("td", {class: "num"}, tot ?? "—"), $("td", {class: "num" + (bad ? " bad-text" : "")}, win ?? "—"));
-    }))));
-  p.cmds.replaceChildren(b.cmds.length ? $("table", {},
-    $("thead", {}, $("tr", {}, $("th", {}, "命令"), $("th", {class: "num"}, "帧/秒"), $("th", {class: "num"}, "最近"))),
-    $("tbody", {}, ...b.cmds.map(c => $("tr", {},
-      $("td", {class: "nowrap"}, `${c.cmd} ${c.name}`, c.cmd === "0x0A06" && c.message ? $("div", {class: "key"}, c.message.key) : null),
-      $("td", {class: "num"}, fmt(c.rate, 1)), $("td", {class: "num"}, age(c.age))))))
-    : $("div", {class: "empty"}, "还没解出帧"));
-  p.recent.replaceChildren(b.recent.length ? $("table", {},
-    $("thead", {}, $("tr", {}, $("th", {}, "命令"), $("th", {class: "num"}, "seq"), $("th", {}, "内容"), $("th", {class: "num"}, "时间"))),
-    $("tbody", {}, ...b.recent.map(f => $("tr", {},
-      $("td", {class: "nowrap"}, `${f.cmd} ${f.name}`), $("td", {class: "num"}, f.seq ?? "—"),
-      $("td", {class: "msg"}, msgText(f.message)), $("td", {class: "num"}, age(f.age))))))
-    : $("div", {class: "empty"}, "还没解出帧"));
-  drawSpectrum(p);
+function renderEvents() {
+  const ev = state.events || [];
+  setHTML($("#events"), ev.length ? ev.map(e => {
+    const t = new Date(e.t * 1000).toLocaleTimeString("zh-CN", {hour12: false});
+    return `<div class="ev">${dot(e.level === "info" ? "idle" : e.level)}<span class="t">${t}</span><span><span class="b">${esc(e.board)}</span> ${esc(e.text)}</span></div>`;
+  }).join("") : `<div class="empty">暂无事件</div>`);
 }
 
 function render() {
   if (!state) return;
   const team = state.team === "red" ? "红方" : state.team === "blue" ? "蓝方" : "—";
-  document.getElementById("cfg").textContent = `配置：${team} · 干扰等级 ${state.jam_level ?? "—"}`;
-  document.getElementById("cards").replaceChildren(...state.boards.map(card));
-  for (const b of state.boards) if (b.role === "rx") renderPanel(b);
+  $("#cfg").textContent = `配置 ${team} · 干扰等级 ${state.jam_level ?? "—"}`;
+  renderStrip();
+  for (const b of state.boards) if (b.role === "rx") renderRx(b);
+  renderTx();
+  renderEvents();
+}
+function onSpectrum(m) {
+  const p = rx[m.board]; if (!p) return;
+  p.db = m.db;
+  if (!p.hold) p.hold = m.db.slice(); else for (let i = 0; i < N; i++) p.hold[i] = Math.max(m.db[i], p.hold[i] - 0.2);
+  drawSpec(p); pushWf(p, m.db);
 }
 
 // ---------- 连接 ----------
-function setConn(cls, text) {
-  document.getElementById("conn").replaceChildren($("span", {class: "dot " + cls}), text);
-}
-let lastMsg = 0;
+function setConn(s, t) { $("#conn").innerHTML = `${dot(s)}${t}`; }
 function connect() {
   const es = new EventSource("/api/events");
   es.addEventListener("state", e => { state = JSON.parse(e.data); lastMsg = Date.now(); setConn("ok", "已连接"); render(); });
   es.addEventListener("spectrum", e => { lastMsg = Date.now(); onSpectrum(JSON.parse(e.data)); });
-  es.onerror = () => setConn("bad", "连接断开，重连中…");
+  es.onerror = () => setConn("bad", "断开，重连中");
 }
 setInterval(() => {
-  document.getElementById("clock").textContent = new Date().toLocaleTimeString("zh-CN", {hour12: false});
+  $("#clock").textContent = new Date().toLocaleTimeString("zh-CN", {hour12: false});
   if (lastMsg && Date.now() - lastMsg > 3000) setConn("bad", "服务无响应");
 }, 1000);
-window.addEventListener("resize", () => { for (const p of Object.values(panels)) drawSpectrum(p); });
+window.addEventListener("resize", () => { for (const p of Object.values(rx)) { drawSpec(p); if (p.b) renderRx(p.b); } });
 connect();
 </script>
 </body>
