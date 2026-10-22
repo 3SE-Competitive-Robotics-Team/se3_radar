@@ -19,5 +19,8 @@ dev = ["pytest"]
 [tool.setuptools.packages.find]
 include = ["rmwave*"]
 
+[tool.setuptools.package-data]
+"rmwave.webui" = ["static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

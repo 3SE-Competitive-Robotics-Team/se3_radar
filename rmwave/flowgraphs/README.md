@@ -42,7 +42,11 @@ iio source / file source → freq_xlating_fir_filter_ccc → quadrature_demod_cf
 - 代价是频偏容限约一个符号率（≈21 kHz）；更大的频偏由 Python 侧 AFC 网格搜索捕获（实测约 0.6 s 锁定）。
 - XMLRPC：`set_offset`、`get_offset`、`set_center`、`set_gain`、`set_wave`（换波形 / 等级）。
 - `--record` 可同时把原始 IQ 录到文件，方便事后用 `scripts/replay_iq.py` 复盘。
+- `--spectrum 地址` 给调试网页另开一路频谱：原始 IQ 每 1024 点取一段（约 20 帧/秒）→ Blackman-Harris 窗 FFT（移中）
+  → dBFS（满幅单音约 0 dBFS）→ `zeromq.pub_sink`（float32 × 1024）。`run_board.py` 会自动带上。
+- `--level-pub 地址` 再开一路电平：原始 IQ 的 |x|²，每 50 ms 一组 [峰值, 均值]（float32 × 2），满幅为 1.0，用来判断削顶。
 
 ## 端口
 
 在 `config/boards.yaml` 里按板分配，每块板的 ZMQ 和 XMLRPC 端口必须不同。
+调试网页的遥测端口默认是 `ctrl+1000`（状态）、`ctrl+2000`（频谱）、`ctrl+3000`（电平），见 `rmwave/telemetry.py`。

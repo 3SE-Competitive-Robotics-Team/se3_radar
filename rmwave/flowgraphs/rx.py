@@ -6,32 +6,43 @@
 
 offset 由 Python 侧 AFC 通过 XMLRPC 的 set_offset 实时更新。
 
+给调试网页另开两路（给了地址才开）：
+  spectrum：原始 IQ 每 1024 点取一段 → 加窗 FFT（移中）→ dBFS → ZMQ PUB（float32 × 1024），约 20 帧/秒；
+            满幅单音约为 0 dBFS。
+  level：   原始 IQ 的 |x|²，每 50 ms 一组 [峰值, 均值] → ZMQ PUB（float32 × 2）。
+            满幅（AD9363 12 位）对应 1.0，峰值接近 1 即削顶。
+
 单独运行（每块板一个进程）：
   python3 -m rmwave.flowgraphs.rx --team red --level 0 --uri ip:192.168.4.1
   python3 -m rmwave.flowgraphs.rx --team red --level 1 --file data/x.c64      # 不接硬件，回放 IQ 文件
 """
 
 import argparse
+import math
 import signal
 import sys
 import time
 
-from gnuradio import analog, blocks, gr, zeromq
+from gnuradio import analog, blocks, fft, gr, zeromq
 from gnuradio import filter as grfilter
+from gnuradio.fft import window
 
 from .. import phy
 from ..dsp import lowpass_taps
+from ..telemetry import LEVEL_FPS, SPECTRUM_SIZE
 from . import control
 
 DEFAULT_ZMQ = {"info": "tcp://127.0.0.1:53301", "jam": "tcp://127.0.0.1:53302"}
 DEFAULT_CTRL = 53310
 TRANSITION_HZ = 20e3
+SPECTRUM_FPS = 20
 
 
 class RxFlowgraph(gr.top_block):
     def __init__(self, spec: phy.WaveSpec, zmq_addr: str, uri: str | None = None, in_file: str | None = None,
                  offset_hz: float = 0.0, gain_mode: str = "slow_attack", gain_db: float = 50.0,
-                 record_file: str | None = None, buffer_size: int = 65536, throttle: bool = True):
+                 record_file: str | None = None, buffer_size: int = 65536, throttle: bool = True,
+                 spectrum_addr: str | None = None, level_addr: str | None = None):
         gr.top_block.__init__(self, "rmwave rx", catch_exceptions=True)
         self.spec = spec
         self.sdr = None
@@ -62,6 +73,35 @@ class RxFlowgraph(gr.top_block):
         self.connect(src, self.xlate, self.demod, self.sink)
         if record_file:
             self.connect(src, blocks.file_sink(gr.sizeof_gr_complex, record_file, False))
+        if spectrum_addr:
+            self._connect_spectrum(src, spectrum_addr)
+        if level_addr:
+            self._connect_level(src, level_addr)
+
+    def _connect_level(self, src, addr: str) -> None:
+        n = int(phy.SAMPLE_RATE / LEVEL_FPS)
+        mag2 = blocks.complex_to_mag_squared(1)
+        peak = blocks.max_ff(n, 1)
+        mean = blocks.integrate_ff(n, 1)
+        scale = blocks.multiply_const_ff(1.0 / n)
+        both = blocks.interleave(gr.sizeof_float, 1)
+        self.connect(src, mag2)
+        self.connect(mag2, blocks.stream_to_vector(gr.sizeof_float, n), peak, (both, 0))
+        self.connect(mag2, mean, scale, (both, 1))
+        self.connect(both, blocks.stream_to_vector(gr.sizeof_float, 2),
+                     zeromq.pub_sink(gr.sizeof_float, 2, addr, 100, False, -1))
+
+    def _connect_spectrum(self, src, addr: str) -> None:
+        n = SPECTRUM_SIZE
+        win = window.blackmanharris(n)
+        keep = max(1, round(phy.SAMPLE_RATE / n / SPECTRUM_FPS))
+        self.connect(src,
+                     blocks.stream_to_vector(gr.sizeof_gr_complex, n),
+                     blocks.keep_one_in_n(gr.sizeof_gr_complex * n, keep),
+                     fft.fft_vcc(n, True, win, True, 1),
+                     blocks.complex_to_mag_squared(n),
+                     blocks.nlog10_ff(10, n, -20 * math.log10(sum(win))),
+                     zeromq.pub_sink(gr.sizeof_float, n, addr, 100, False, -1))
 
     # ---- XMLRPC 可调 ----
     def set_offset(self, hz: float) -> None:
@@ -103,13 +143,16 @@ def main(argv=None) -> int:
     ap.add_argument("--gain-mode", default="slow_attack", choices=["manual", "slow_attack", "fast_attack", "hybrid"])
     ap.add_argument("--gain", type=float, default=50.0, help="manual 模式下的接收增益 dB")
     ap.add_argument("--record", help="同时把原始 IQ 录到这个文件")
+    ap.add_argument("--spectrum", help="频谱发布地址（给调试网页），不给则不算频谱")
+    ap.add_argument("--level-pub", help="电平发布地址（给调试网页），不给则不算")
     args = ap.parse_args(argv)
     if not args.uri and not args.file:
         ap.error("需要 --uri 或 --file")
 
     spec = phy.wave_spec(phy.Team(args.team), args.level)
     tb = RxFlowgraph(spec, args.zmq or DEFAULT_ZMQ[spec.kind.value], args.uri, args.file, args.offset,
-                     args.gain_mode, args.gain, args.record)
+                     args.gain_mode, args.gain, args.record, spectrum_addr=args.spectrum,
+                     level_addr=args.level_pub)
     control.serve(tb, args.ctrl_port, ["set_offset", "get_offset", "set_center", "set_gain", "set_wave"])
     print(f"rx {spec.kind.value} L{spec.level} {spec.center_hz / 1e6:.2f} MHz ← {args.uri or args.file}", flush=True)
 
