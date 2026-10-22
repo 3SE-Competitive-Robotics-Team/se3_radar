@@ -1,18 +1,26 @@
 # NanoSDR 板子分工（第一阶段：两发两收）
-# 每块板需在固件 U 盘的 config.txt 里改成不同子网，主机侧网卡地址同子网 .10
-# IP 为占位值，按实际改。每块板的 zmq / ctrl 端口必须互不相同。
-# 启动：python3 scripts/run_board.py <板名>
+# 每块板在固件 U 盘的 config.txt 里改成不同子网（每块板一个独立网段），主机侧网卡地址同子网。
+# 每块板的 zmq / ctrl 端口必须互不相同。启动：python3 scripts/run_board.py <板名>
+#
+# 2026-10-20 上板实测（4 块板，全部直插电脑；扩展坞会导致 USB 网卡在大流量下被重置）：
+#   序列号      IP            固件                          状态
+#   03df62b3…  192.168.4.2   v0.39-dirty（2026-04-11 编译） 收发正常 → rx_info
+#   03df6ca3…  192.168.2.1   v0.39（2025-09/10 编译，原厂）  收发正常 → rx_jam
+#   03d7604a…  192.168.3.1   v0.39-dirty（2026-04-11 编译） 接收校准失败（硬件），只能发 → tx_jam
+#   03d76352…  192.168.5.1   v0.39-dirty（2026-04-11 编译） 射频芯片补焊后能初始化，发射本振锁定，接收本振锁不上 → tx_info
+# 四块板的闪存都已备份在 data/backup/<序列号>/（不入库）。
+# 03d76352… 的 U-Boot 环境区损坏，config.txt 改 IP 不生效；IP 由板上 /mnt/jffs2/autorun.sh 设置（原脚本备份为 autorun.sh.bak-3.2）。
 
 boards:
   tx_info:
-    uri: ip:192.168.2.1
+    uri: ip:192.168.5.1    # 序列号 03d76352…
     role: tx
     wave: info
     zmq: tcp://127.0.0.1:53201
     ctrl: 53211
     attenuation: 70      # 发射衰减 dB，实验室近距离从大衰减开始
   tx_jam:
-    uri: ip:192.168.3.1
+    uri: ip:192.168.3.1    # 序列号 03d7604a…
     role: tx
     wave: jam
     zmq: tcp://127.0.0.1:53202
@@ -20,7 +28,7 @@ boards:
     attenuation: 70
     key: null            # 固定密钥；null 为随机
   rx_info:
-    uri: ip:192.168.4.1
+    uri: ip:192.168.4.2    # 序列号 03df62b3…
     role: rx
     wave: info
     zmq: tcp://127.0.0.1:53301
@@ -28,7 +36,7 @@ boards:
     offset: 0            # 板子频偏校准值 Hz，AFC 从这里开始
     gain_mode: slow_attack
   rx_jam:
-    uri: ip:192.168.5.1
+    uri: ip:192.168.2.1    # 序列号 03df6ca3…
     role: rx
     wave: jam
     zmq: tcp://127.0.0.1:53302
