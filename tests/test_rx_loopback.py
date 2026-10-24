@@ -4,6 +4,7 @@
 """
 
 import random
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +13,7 @@ import pytest
 from rmwave import dsp, phy
 from rmwave.io.iqfile import read_c64
 from rmwave.protocol import air, cmds
-from rmwave.rx.decoder import decode_iq
+from rmwave.rx.decoder import FrequencyTracker, WaveDecoder, decode_iq
 from rmwave.rx.demod import PacketDemodulator
 from rmwave.tx import source
 
@@ -84,6 +85,35 @@ def test_afc_acquires_large_offset(cfo):
     frames, rx = decode_iq(channel(dsp.freq_shift(iq, cfo), snr_db=15), RED_INFO)
     assert abs(rx.frontend.offset_hz - cfo) < 2e3
     assert len(frames) >= 0.8 * len(expected)
+
+
+def afc_with_delay(iq: np.ndarray, delay: int, holdoff: int, chunk: int = 8192):
+    """像实时接收那样：AFC 给出的新偏移要过 delay 个样本才在前端生效。返回 (帧数, 最后四分之一的偏移序列)。"""
+    fe, dec = dsp.ChannelFrontend(RED_INFO), WaveDecoder(RED_INFO.kind)
+    tracker = FrequencyTracker(RED_INFO.deviation_hz, holdoff=holdoff)
+    pending, done, hist, frames = deque(), 0, [], 0
+    for i in range(0, len(iq), chunk):
+        while pending and pending[0][0] <= done:
+            fe.offset_hz = pending.popleft()[1]
+        y = fe.process(iq[i:i + chunk])
+        done += len(y)
+        frames += len(dec.feed(y))
+        pending.append((done + delay, tracker.update(dec.last_packets, len(y))))
+        hist.append(tracker.offset_hz)
+    return frames, np.array(hist[len(hist) * 3 // 4:])
+
+
+@pytest.mark.parametrize("cfo, min_ratio", [(8e3, 0.95), (-25e3, 0.6)])   # 大频偏要先网格搜索约 2 s
+def test_afc_stable_with_loop_delay(cfo, min_ratio):
+    """实板上流图和 USB 里积压约 0.1~0.2 s 按旧偏移处理的数据。没有冷静期时 AFC 会对同一误差反复修正、
+    来回振荡（实测在 ±18 kHz 间乱跳）；有冷静期时应稳稳锁在真实频偏上。"""
+    iq, expected = info_signal(30, seed=1)
+    x = channel(dsp.freq_shift(iq, cfo), snr_db=25)
+    frames, hist = afc_with_delay(x, delay=150_000, holdoff=200_000)
+    assert np.max(np.abs(hist - cfo)) < 1e3
+    assert frames >= min_ratio * len(expected)
+    _, bad = afc_with_delay(x, delay=150_000, holdoff=0)       # 对照：确实是延迟造成的
+    assert np.max(np.abs(bad - cfo)) > 5e3
 
 
 @pytest.mark.parametrize("level", [0, 1, 2, 3])

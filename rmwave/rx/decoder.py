@@ -74,6 +74,10 @@ class FrequencyTracker:
     估计只在残余频偏小于约一个符号率时可信：接收低通截止 = 带宽/2 = 频偏 + 符号率，
     残余频偏再大，一个音就落进过渡带被压低，鉴频结果会偏得很远、甚至反号（包可能照样解得出）。
     所以超过 max_estimate_hz 的估计一律不用；只有这种估计时按失锁处理，靠网格搜索把残余拉回可信范围。
+
+    holdoff：偏移改动后要过多少样本，新偏移才体现在送来的数据里（实时接收时流图和 USB 里积压着按旧偏移
+    处理过的数据，约 0.1~0.2 s）。这段时间里到的包只用来确认还锁着，不拿来修正，否则会对同一个误差
+    反复修正、来回振荡。离线前端改了立即生效，用 0。
     """
 
     deviation_hz: float
@@ -84,39 +88,50 @@ class FrequencyTracker:
     search_hz: tuple = (0.0, 15e3, -15e3, 30e3, -30e3, 45e3, -45e3)
     dwell: int = 200_000            # 每个搜索偏移停留 0.2 s（约 20 包）
     lost_after: int = 300_000       # 0.3 s（约 30 包）没有可信估计即视为失锁
+    holdoff: int = 0                # 偏移改动后这么多样本内的估计不用于修正（见类说明）
     offset_hz: float = 0.0
     locked: bool = False
     _since_packet: int = 0
     _since_step: int = 0
     _search_idx: int = 0
     _base_hz: float = 0.0
+    _hold: int = 0
 
     def __post_init__(self):
         self._base_hz = self.offset_hz
 
+    def _move(self, hz: float) -> None:
+        if hz != self.offset_hz:
+            self.offset_hz = hz
+            self._hold = self.holdoff
+
     def update(self, packets: list[AirPacket], n_samples: int) -> float:
         """返回新的前端偏移（Hz）。"""
+        holding = self._hold > 0
+        self._hold = max(0, self._hold - n_samples)
         est = [p.dc * self.deviation_hz for p in packets]
         est = [e for e in est if abs(e) <= self.max_estimate_hz]
         if est:
             self.locked = True
             self._since_packet = 0
             self._since_step = 0
+            self._search_idx = 0
+            if holding:                 # 这些包还是按旧偏移处理的，只说明锁着
+                return self.offset_hz
             cfo = float(np.median(est))
             if abs(cfo) > self.deadband_hz:
-                self.offset_hz += float(np.clip(self.gain * cfo, -self.max_step_hz, self.max_step_hz))
+                self._move(self.offset_hz + float(np.clip(self.gain * cfo, -self.max_step_hz, self.max_step_hz)))
             self._base_hz = self.offset_hz
-            self._search_idx = 0
             return self.offset_hz
         self._since_packet += n_samples
         if self._since_packet < self.lost_after:
             return self.offset_hz
         self.locked = False
         self._since_step += n_samples
-        if self._since_step >= self.dwell:
+        if self._since_step >= self.dwell + self.holdoff:     # 新偏移的数据回来后还要留够 dwell 时间
             self._since_step = 0
             self._search_idx = (self._search_idx + 1) % len(self.search_hz)
-            self.offset_hz = self._base_hz + self.search_hz[self._search_idx]
+            self._move(self._base_hz + self.search_hz[self._search_idx])
         return self.offset_hz
 
 

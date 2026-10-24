@@ -22,6 +22,7 @@ DEFAULT_CTRL = "http://127.0.0.1:53310"
 STALL_S = 0.25          # 两批数据之间超过这么久算一次断流
 EYE_SYMBOLS = 24
 EYE_KEEP = 1 << 16      # 留最近这么多鉴频样本，给眼图取包
+AFC_HOLDOFF = 200_000   # AFC 改偏移后 0.2 s 内的估计不用于修正：流图 + USB 里积压着按旧偏移处理的数据
 
 
 class StreamReceiver:
@@ -31,10 +32,11 @@ class StreamReceiver:
     """
 
     def __init__(self, spec: phy.WaveSpec, address: str, control_url: str | None = None,
-                 offset_hz: float = 0.0, afc_min_step_hz: float = 100.0, ctx: zmq.Context | None = None):
+                 offset_hz: float = 0.0, afc_min_step_hz: float = 100.0, ctx: zmq.Context | None = None,
+                 afc_holdoff: int = AFC_HOLDOFF):
         self.spec = spec
         self.decoder = WaveDecoder(spec.kind)
-        self.tracker = FrequencyTracker(spec.deviation_hz, offset_hz=offset_hz)
+        self.tracker = FrequencyTracker(spec.deviation_hz, offset_hz=offset_hz, holdoff=afc_holdoff)
         self.control = xmlrpc.client.ServerProxy(control_url, allow_none=True) if control_url else None
         self.afc_min_step_hz = afc_min_step_hz
         self._applied_hz = offset_hz

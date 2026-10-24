@@ -10,6 +10,7 @@ Windows 上双击仓库根目录的 start_radar.bat（经 WSL 运行本脚本）
 """
 
 import argparse
+import signal
 import sys
 import threading
 import time
@@ -54,12 +55,19 @@ def main() -> int:
     print(f"调试台：{url}   （Ctrl-C 退出并停掉全部板子）", flush=True)
     if not args.no_browser:
         threading.Thread(target=lambda: (time.sleep(1), webbrowser.open(url)), daemon=True).start()
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
     try:
-        while True:
-            time.sleep(1)
+        while not stop.wait(1):
+            pass
     except KeyboardInterrupt:
-        print("\n正在停止全部板子…", flush=True)
+        pass
+    # 收尾时再按 Ctrl-C / 再收到信号也不能打断，否则板子进程停不干净
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    print("\n正在停止全部板子…", flush=True)
     ui.close()
+    print("已全部停止", flush=True)
     return 0
 
 

@@ -117,6 +117,10 @@ class BoardProcess:
         except subprocess.TimeoutExpired:
             p.kill()
             p.wait(2)
+        try:
+            os.killpg(p.pid, 9)          # run_board.py 退了，它拉起的流图子进程也不能留下占着端口和板子
+        except (OSError, AttributeError):
+            pass
         self.exit_code = p.returncode
         self.log.append(f"[调试台] 已停止（退出码 {p.returncode}）")
 
@@ -130,6 +134,10 @@ class BoardProcess:
             return None
         if self.exit_code is None:
             self.exit_code = self.proc.returncode
+            try:
+                os.killpg(self.proc.pid, 9)  # 崩溃时留下的流图子进程一起清掉，否则重启会抢不到端口
+            except (OSError, AttributeError):
+                pass
             if self.started_at and now - self.started_at > 30:   # 跑了一阵才退出，退避从头算
                 self._fails = 0
             self._fails += 1

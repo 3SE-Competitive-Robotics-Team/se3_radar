@@ -2,6 +2,7 @@
 参数校验、衰减 / 增益经 XMLRPC 实时下发、HTTP 控制接口。板子进程用假进程代替，不需要 GNU Radio。"""
 
 import json
+import os
 import socket
 import sys
 import time
@@ -186,3 +187,38 @@ def test_http_control_read_only():
         assert post(ui.port, {"action": "start_all"})[0] == 403
     finally:
         ui.close()
+
+
+ORPHAN = [sys.executable, "-c", (
+    "import subprocess, sys, time;"
+    "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']);"
+    "print(c.pid, flush=True); time.sleep(float(sys.argv[1]))"), "30"]
+
+
+def child_pid(b):
+    assert wait_for(lambda: any(line.strip().isdigit() for line in b.log))
+    return int(next(line for line in b.log if line.strip().isdigit()))
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    with open(f"/proc/{pid}/stat") as f:          # 僵尸进程不算活着
+        return f.read().split()[2] != "Z"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="进程组清理只在 Linux 上")
+def test_stop_kills_flowgraph_child():
+    """停止一块板时，run_board.py 拉起的流图子进程也必须一起停掉，否则会留着占端口（实测踩过）。"""
+    s = Supervisor(make_cfg(), "x", command_fn=lambda bp: ORPHAN)
+    try:
+        b = s.boards["rx_info"]
+        b.start()
+        pid = child_pid(b)
+        assert alive(pid)
+        b.stop()
+        assert wait_for(lambda: not alive(pid), 3)
+    finally:
+        s.close()
