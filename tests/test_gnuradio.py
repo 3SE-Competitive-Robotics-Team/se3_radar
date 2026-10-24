@@ -201,3 +201,41 @@ def test_rx_flowgraph_level_tap(tmp_path):
     assert 8 <= len(pairs) <= 10                       # 0.5 s ÷ 50 ms
     peak, mean = np.array(pairs).T
     assert np.allclose(peak, amp ** 2, rtol=1e-3) and np.allclose(mean, amp ** 2, rtol=1e-3)
+
+
+def _down_to_1(x, rate):
+    """rate → 1 MS/s：频域截取中间那段，不依赖 scipy。"""
+    import numpy as np
+    k = int(rate // phy.SAMPLE_RATE)
+    n = len(x) // k * k
+    X = np.fft.fftshift(np.fft.fft(x[:n]))
+    m = n // k
+    return (np.fft.ifft(np.fft.ifftshift(X[(n - m) // 2:(n - m) // 2 + m])) / k).astype(np.complex64)
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_dual_tx_both_waves_decodable(tmp_path, level):
+    """一块板同时发信息波和干扰波（干扰强 30 dB）：两路都能解出，信息波在发射中心（本振泄漏落在直流）。"""
+    from rmwave.flowgraphs.dual_tx import TX_RATE, DualTxFlowgraph
+    from rmwave import dsp
+
+    team, seconds = phy.Team.RED, 2.0
+    info_addr, jam_addr = f"tcp://127.0.0.1:{free_port()}", f"tcp://127.0.0.1:{free_port()}"
+    servers = [PacketServer(stream.InfoStream(seed=1), info_addr), PacketServer(stream.JamStream("Dual01"), jam_addr)]
+    for s in servers:
+        s.start()
+    path = tmp_path / "dual.c64"
+    try:
+        tb = DualTxFlowgraph(team, level, info_addr, jam_addr, out_file=str(path), ratio_db=30,
+                             max_samples=int(seconds * TX_RATE))
+        assert tb.center_hz == tb.info.center_hz
+        tb.run()
+    finally:
+        for s in servers:
+            s.close()
+    x = read_c64(path)
+    info_frames, _ = decode_iq(_down_to_1(x, TX_RATE), tb.info)
+    assert len(info_frames) >= 0.8 * seconds * 50 and all(f.message is not None for f in info_frames)
+    jam_bb = dsp.freq_shift(x, -(tb.jam.center_hz - tb.center_hz), fs=TX_RATE)
+    jam_frames, _ = decode_iq(_down_to_1(jam_bb, TX_RATE), tb.jam)
+    assert {f.message.key for f in jam_frames} == {"Dual01"} and len(jam_frames) >= 0.8 * seconds / stream.PACKET_SECONDS
